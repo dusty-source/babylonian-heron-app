@@ -2,8 +2,7 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wallet, TrendingUp, TrendingDown, Home, CreditCard, PiggyBank,
-  BarChart3, ArrowUpRight, ArrowDownRight, Activity, Landmark, Zap,
-  ShoppingBag, Car, Smartphone, Milk, Utensils, Shirt, Plus, Trash2,
+  BarChart3, ArrowUpRight, ArrowDownRight, Activity,  Plus, Trash2,
   Edit3, Check, RotateCcw
 } from 'lucide-react';
 import {
