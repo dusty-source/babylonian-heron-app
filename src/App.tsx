@@ -2,8 +2,9 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wallet, TrendingUp, TrendingDown, Home, CreditCard, PiggyBank,
-  BarChart3, ArrowUpRight, ArrowDownRight, Activity,  Plus, Trash2,
-  Edit3, Check, RotateCcw
+  BarChart3, ArrowUpRight, ArrowDownRight, Activity, Plus, Trash2,
+  Edit3, Check, RotateCcw, Calendar, Clock, ChevronLeft, ChevronRight,
+  History
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie
@@ -11,7 +12,7 @@ import {
 import { useBudgetStore } from './store/useBudgetStore';
 import { formatCurrency, getStatusColor, getRemarkColor } from './data/budgetData';
 
-type Tab = 'overview' | 'details' | 'debt';
+type Tab = 'overview' | 'details' | 'debt' | 'audit';
 type EditSection = 'income' | 'household' | 'debt-repay' | 'savings' | 'debt-prog' | null;
 
 function AnimatedNumber({ value, prefix = '' }: { value: number; prefix?: string }) {
@@ -94,18 +95,28 @@ function EditableRow({
   );
 }
 
+function formatTimestamp(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [selectedMonth, setSelectedMonth] = useState(0);
   const [editSection, setEditSection] = useState<EditSection>(null);
   const [newEntryName, setNewEntryName] = useState('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showAddYear, setShowAddYear] = useState(false);
+  const [newYearVal, setNewYearVal] = useState('');
+  const [showYearMenu, setShowYearMenu] = useState(false);
 
   const store = useBudgetStore();
-  const { state, updateEntryValue, updateEntryName, addEntry, deleteEntry, resetToDefaults,
+  const { state, currentYear, updateEntryValue, updateEntryName, addEntry, deleteEntry,
+    setActiveYear, addYear, deleteYear, resetToDefaults,
     getIncomeTotal, getOutgoingTotal, getAllocationTotal, getHouseholdTotal, getDebtRepaymentTotal } = store;
 
-  const currentMonth = state.months[selectedMonth];
+  const months = currentYear?.months || [];
+  const currentMonth = months[selectedMonth] || '';
 
   const incomeTotal = getIncomeTotal(selectedMonth);
   const outgoingTotal = getOutgoingTotal(selectedMonth);
@@ -113,33 +124,40 @@ export default function App() {
   const householdTotal = getHouseholdTotal(selectedMonth);
   const debtRepayTotal = getDebtRepaymentTotal(selectedMonth);
 
-  const grandIncoming = useMemo(() => state.months.reduce((s, _, i) => s + getIncomeTotal(i), 0), [state, getIncomeTotal]);
-  const grandOutgoing = useMemo(() => state.months.reduce((s, _, i) => s + getOutgoingTotal(i), 0), [state, getOutgoingTotal]);
-  const grandDebtPaid = useMemo(() => state.debtRepayment.reduce((s, e) => s + e.values.reduce((a, b) => a + b, 0), 0), [state]);
+  const grandIncoming = useMemo(() => months.reduce((s, _, i) => s + getIncomeTotal(i), 0), [months, getIncomeTotal]);
+  const grandOutgoing = useMemo(() => months.reduce((s, _, i) => s + getOutgoingTotal(i), 0), [months, getOutgoingTotal]);
+  const grandDebtPaid = useMemo(() => currentYear?.debtRepayment.reduce((s, e) => s + e.values.reduce((a, b) => a + b, 0), 0) || 0, [currentYear]);
 
-  const chartData = useMemo(() => state.months.map((m, i) => ({
-    month: m.slice(0, 3), incoming: getIncomeTotal(i), outgoing: getOutgoingTotal(i),
-  })), [state, getIncomeTotal, getOutgoingTotal]);
+  const chartData = useMemo(() => months.map((m, i) => ({
+    month: m, incoming: getIncomeTotal(i), outgoing: getOutgoingTotal(i),
+  })), [months, getIncomeTotal, getOutgoingTotal]);
 
-  const debtChartData = useMemo(() => state.months.map((m, i) => ({
-    month: m.slice(0, 3), vehicle: state.debtProgression[0]?.values[i] || 0, gpu: state.debtProgression[1]?.values[i] || 0,
-  })), [state]);
+  const debtChartData = useMemo(() => months.map((m, i) => ({
+    month: m, vehicle: currentYear?.debtProgression[0]?.values[i] || 0, gpu: currentYear?.debtProgression[1]?.values[i] || 0,
+  })), [months, currentYear]);
 
-  const expenseChartData = useMemo(() => state.householdExpenses
+  const expenseChartData = useMemo(() => (currentYear?.householdExpenses || [])
     .filter(e => e.values[selectedMonth] > 0)
-    .map(e => ({ name: e.name, value: e.values[selectedMonth] })), [state, selectedMonth]);
+    .map(e => ({ name: e.name, value: e.values[selectedMonth] })), [currentYear, selectedMonth]);
 
   const debtPieData = useMemo(() => {
-    const data = state.debtProgression.filter(d => d.values[selectedMonth] > 0).map((d, i) => ({
+    if (!currentYear) return [];
+    return currentYear.debtProgression.filter(d => d.values[selectedMonth] > 0).map((d, i) => ({
       name: d.name, value: d.values[selectedMonth], color: ['#0a84ff', '#bf5af2', '#ff9f0a'][i % 3]
     }));
-    return data;
-  }, [state, selectedMonth]);
+  }, [currentYear, selectedMonth]);
 
-  const handleAddEntry = (section: keyof typeof state) => {
+  const handleAddEntry = (section: keyof typeof currentYear) => {
     if (!newEntryName.trim()) return;
     addEntry(section, newEntryName.trim().toUpperCase());
     setNewEntryName('');
+  };
+
+  const handleAddYear = () => {
+    if (!newYearVal.trim() || !/^\d{4}$/.test(newYearVal)) return;
+    addYear(newYearVal.trim());
+    setNewYearVal('');
+    setShowAddYear(false);
   };
 
   const SectionHeader = ({ title, section, onAdd }: { title: string; section: EditSection; onAdd?: () => void }) => (
@@ -163,10 +181,12 @@ export default function App() {
     </div>
   );
 
+  if (!currentYear) return <div className="h-full flex items-center justify-center text-ios-text-secondary">Loading...</div>;
+
   return (
     <div className="h-full flex flex-col bg-ios-bg gradient-mesh">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="px-5 pt-6 pb-3">
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="px-5 pt-6 pb-2">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold gradient-text">Babylonian Heron</h1>
@@ -183,6 +203,65 @@ export default function App() {
           </div>
         </div>
       </motion.div>
+
+      {/* Year Switcher */}
+      <div className="px-4 mb-2">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex gap-1.5 overflow-x-auto scroll-container pb-1">
+            {state.availableYears.map(year => (
+              <motion.button key={year} whileTap={{ scale: 0.92 }} onClick={() => { setActiveYear(year); setSelectedMonth(0); }}
+                className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                  state.activeYear === year ? 'bg-ios-purple text-white ios-shadow-sm' : 'bg-ios-surface-2 text-ios-text-secondary'
+                }`}>
+                {year}
+              </motion.button>
+            ))}
+            <motion.button whileTap={{ scale: 0.92 }} onClick={() => setShowAddYear(true)}
+              className="w-7 h-7 rounded-full bg-ios-surface-2 flex items-center justify-center text-ios-text-secondary">
+              <Plus size={14} />
+            </motion.button>
+          </div>
+          {state.availableYears.length > 1 && (
+            <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowYearMenu(!showYearMenu)}
+              className="w-7 h-7 rounded-full bg-ios-surface-2 flex items-center justify-center text-ios-text-secondary">
+              <Trash2 size={12} />
+            </motion.button>
+          )}
+        </div>
+        {showYearMenu && (
+          <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
+            className="mt-2 glass-card rounded-xl p-2 ios-shadow">
+            <div className="text-[10px] text-ios-text-secondary mb-1 px-1">Delete Year</div>
+            {state.availableYears.filter(y => y !== state.activeYear).map(year => (
+              <button key={year} onClick={() => { deleteYear(year); setShowYearMenu(false); }}
+                className="w-full text-left px-2 py-1.5 rounded-lg text-xs text-ios-red hover:bg-ios-red/10 transition-colors">
+                Delete {year}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </div>
+
+      {/* Add Year Modal */}
+      <AnimatePresence>
+        {showAddYear && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-6">
+            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+              className="glass-card rounded-2xl p-5 w-full max-w-xs ios-shadow">
+              <h3 className="text-sm font-semibold text-ios-text mb-2">Add New Year</h3>
+              <input value={newYearVal} onChange={e => setNewYearVal(e.target.value)} placeholder="2028"
+                className="w-full bg-ios-surface-2 rounded-xl px-3 py-2 text-sm text-ios-text border border-ios-border/30 focus:border-ios-blue outline-none mb-3" />
+              <div className="flex gap-2">
+                <button onClick={() => setShowAddYear(false)}
+                  className="flex-1 py-2 rounded-xl bg-ios-surface-2 text-xs font-medium text-ios-text-secondary">Cancel</button>
+                <button onClick={handleAddYear}
+                  className="flex-1 py-2 rounded-xl bg-ios-blue/20 text-xs font-medium text-ios-blue">Add</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Reset Confirm Modal */}
       <AnimatePresence>
@@ -205,9 +284,9 @@ export default function App() {
       </AnimatePresence>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 gap-3 px-4 mb-4">
-        <SummaryCard title="Total In" value={grandIncoming} icon={<TrendingUp size={16} />} color="#30d158" subtitle="10 months" delay={0.1} />
-        <SummaryCard title="Total Out" value={grandOutgoing} icon={<TrendingDown size={16} />} color="#ff453a" subtitle="10 months" delay={0.2} />
+      <div className="grid grid-cols-2 gap-3 px-4 mb-3">
+        <SummaryCard title="Total In" value={grandIncoming} icon={<TrendingUp size={16} />} color="#30d158" subtitle={state.activeYear} delay={0.1} />
+        <SummaryCard title="Total Out" value={grandOutgoing} icon={<TrendingDown size={16} />} color="#ff453a" subtitle={state.activeYear} delay={0.2} />
         <SummaryCard title="Debt Paid" value={grandDebtPaid} icon={<CreditCard size={16} />} color="#0a84ff" subtitle="EMI cleared" delay={0.3} />
         <SummaryCard title="Net Flow" value={grandIncoming - grandOutgoing} icon={<Wallet size={16} />}
           color={grandIncoming >= grandOutgoing ? '#30d158' : '#ff453a'} subtitle="Overall balance" delay={0.4} />
@@ -215,13 +294,13 @@ export default function App() {
 
       {/* Month Selector */}
       <div className="mb-3">
-        <div className="flex gap-2 overflow-x-auto scroll-container pb-2 px-4">
-          {state.months.map((m, i) => (
+        <div className="flex gap-1.5 overflow-x-auto scroll-container pb-2 px-4">
+          {months.map((m, i) => (
             <motion.button key={m} whileTap={{ scale: 0.92 }} onClick={() => setSelectedMonth(i)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+              className={`px-2.5 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${
                 selectedMonth === i ? 'bg-ios-blue text-white ios-shadow-sm' : 'bg-ios-surface-2 text-ios-text-secondary'
               }`}>
-              {m.slice(0, 3)}
+              {m}
             </motion.button>
           ))}
         </div>
@@ -230,9 +309,9 @@ export default function App() {
       {/* Tab Bar */}
       <div className="px-4 mb-3">
         <div className="flex bg-ios-surface-2 rounded-xl p-1">
-          {(['overview', 'details', 'debt'] as Tab[]).map(tab => (
+          {(['overview', 'details', 'debt', 'audit'] as Tab[]).map(tab => (
             <motion.button key={tab} whileTap={{ scale: 0.95 }} onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize transition-all ${
+              className={`flex-1 py-2 rounded-lg text-[10px] font-semibold capitalize transition-all ${
                 activeTab === tab ? 'bg-ios-surface text-ios-text ios-shadow-sm' : 'text-ios-text-secondary'
               }`}>{tab}</motion.button>
           ))}
@@ -244,11 +323,10 @@ export default function App() {
         <AnimatePresence mode="wait">
           {activeTab === 'overview' && (
             <motion.div key="overview" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3">
-              {/* Monthly Snapshot */}
               <div className="glass-card rounded-2xl p-4 ios-shadow">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-semibold text-ios-text">{currentMonth} Snapshot</span>
-                  <StatusBadge text={state.remarks.house70?.[String(selectedMonth)] || 'N/A'} />
+                  <span className="text-sm font-semibold text-ios-text">{currentMonth} {state.activeYear}</span>
+                  <StatusBadge text={currentYear.remarks.house70?.[String(selectedMonth)] || 'N/A'} />
                 </div>
                 <div className="space-y-3">
                   <div>
@@ -277,11 +355,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Income - Editable */}
               <div className="glass-card rounded-2xl p-4 ios-shadow">
                 <SectionHeader title="Incoming" section="income" onAdd={() => handleAddEntry('incomeEntries')} />
                 <div className="space-y-1">
-                  {state.incomeEntries.map(entry => (
+                  {currentYear.incomeEntries.map(entry => (
                     <EditableRow key={entry.id} name={entry.name} value={entry.values[selectedMonth]}
                       isEditing={editSection === 'income'}
                       onChange={v => updateEntryValue('incomeEntries', entry.id, selectedMonth, v)}
@@ -295,11 +372,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Allocation */}
               <div className="glass-card rounded-2xl p-4 ios-shadow">
                 <SectionHeader title="Allocation" section="income" />
                 <div className="space-y-2.5">
-                  {state.allocationEntries.map((entry, idx) => {
+                  {currentYear.allocationEntries.map((entry, idx) => {
                     const colors = ['#bf5af2', '#0a84ff', '#ff9f0a'];
                     const icons = [<PiggyBank size={14} />, <Home size={14} />, <CreditCard size={14} />];
                     return (
@@ -318,11 +394,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Status */}
               <div className="glass-card rounded-2xl p-4 ios-shadow">
                 <span className="text-sm font-semibold text-ios-text block mb-3">Status</span>
                 <div className="space-y-2">
-                  {state.statusEntries.map(entry => (
+                  {currentYear.statusEntries.map(entry => (
                     <div key={entry.id} className="flex items-center justify-between py-2 border-b border-ios-border/30 last:border-0">
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full" style={{ background: getStatusColor(entry.values[selectedMonth]) }} />
@@ -332,16 +407,15 @@ export default function App() {
                         <span className="text-xs font-semibold tabular-nums" style={{ color: getStatusColor(entry.values[selectedMonth]) }}>
                           {entry.values[selectedMonth] >= 0 ? '+' : ''}{formatCurrency(entry.values[selectedMonth])}
                         </span>
-                        <StatusBadge text={state.remarks[entry.id]?.[String(selectedMonth)] || ''} />
+                        <StatusBadge text={currentYear.remarks[entry.id]?.[String(selectedMonth)] || ''} />
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Trend Chart */}
               <div className="glass-card rounded-2xl p-4 ios-shadow">
-                <span className="text-sm font-semibold text-ios-text block mb-3">10-Month Trend</span>
+                <span className="text-sm font-semibold text-ios-text block mb-3">12-Month Trend</span>
                 <div className="h-40">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={chartData}>
@@ -362,11 +436,10 @@ export default function App() {
 
           {activeTab === 'details' && (
             <motion.div key="details" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3">
-              {/* Household Expenses - Editable */}
               <div className="glass-card rounded-2xl p-4 ios-shadow">
                 <SectionHeader title="Household Expenses" section="household" onAdd={() => handleAddEntry('householdExpenses')} />
                 <div className="space-y-1">
-                  {state.householdExpenses.map(entry => (
+                  {currentYear.householdExpenses.map(entry => (
                     <EditableRow key={entry.id} name={entry.name} value={entry.values[selectedMonth]}
                       isEditing={editSection === 'household'}
                       onChange={v => updateEntryValue('householdExpenses', entry.id, selectedMonth, v)}
@@ -380,11 +453,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Debt Repayment - Editable */}
               <div className="glass-card rounded-2xl p-4 ios-shadow">
                 <SectionHeader title="Debt Repayment" section="debt-repay" onAdd={() => handleAddEntry('debtRepayment')} />
                 <div className="space-y-1">
-                  {state.debtRepayment.map(entry => (
+                  {currentYear.debtRepayment.map(entry => (
                     <EditableRow key={entry.id} name={entry.name} value={entry.values[selectedMonth]}
                       isEditing={editSection === 'debt-repay'}
                       onChange={v => updateEntryValue('debtRepayment', entry.id, selectedMonth, v)}
@@ -398,11 +470,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Savings - Editable */}
               <div className="glass-card rounded-2xl p-4 ios-shadow">
                 <SectionHeader title="Savings" section="savings" onAdd={() => handleAddEntry('savingsData')} />
                 <div className="space-y-1">
-                  {state.savingsData.map(entry => (
+                  {currentYear.savingsData.map(entry => (
                     <EditableRow key={entry.id} name={entry.name} value={entry.values[selectedMonth]}
                       isEditing={editSection === 'savings'}
                       onChange={v => updateEntryValue('savingsData', entry.id, selectedMonth, v)}
@@ -412,7 +483,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Expense Distribution */}
               {expenseChartData.length > 0 && (
                 <div className="glass-card rounded-2xl p-4 ios-shadow">
                   <span className="text-sm font-semibold text-ios-text block mb-3">Expense Distribution</span>
@@ -433,11 +503,10 @@ export default function App() {
 
           {activeTab === 'debt' && (
             <motion.div key="debt" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3">
-              {/* Debt Progression - Editable */}
               <div className="glass-card rounded-2xl p-4 ios-shadow">
                 <SectionHeader title="Debt Progression" section="debt-prog" onAdd={() => handleAddEntry('debtProgression')} />
                 <div className="space-y-1">
-                  {state.debtProgression.map(entry => (
+                  {currentYear.debtProgression.map(entry => (
                     <EditableRow key={entry.id} name={entry.name} value={entry.values[selectedMonth]}
                       isEditing={editSection === 'debt-prog'}
                       onChange={v => updateEntryValue('debtProgression', entry.id, selectedMonth, v)}
@@ -447,7 +516,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Debt Composition */}
               {debtPieData.length > 0 && (
                 <div className="glass-card rounded-2xl p-4 ios-shadow">
                   <span className="text-sm font-semibold text-ios-text block mb-3">Debt Composition</span>
@@ -464,7 +532,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* Debt Progression Chart */}
               <div className="glass-card rounded-2xl p-4 ios-shadow">
                 <span className="text-sm font-semibold text-ios-text block mb-3">Debt Trend</span>
                 <div className="h-48">
@@ -484,6 +551,44 @@ export default function App() {
               </div>
             </motion.div>
           )}
+
+          {activeTab === 'audit' && (
+            <motion.div key="audit" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3">
+              <div className="glass-card rounded-2xl p-4 ios-shadow">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-semibold text-ios-text">Activity Log</span>
+                  <span className="text-[10px] text-ios-text-secondary">{currentYear.auditLog.length} entries</span>
+                </div>
+                {currentYear.auditLog.length === 0 ? (
+                  <div className="text-center py-8 text-xs text-ios-text-secondary">No activity yet</div>
+                ) : (
+                  <div className="space-y-2">
+                    {currentYear.auditLog.slice(0, 50).map(entry => (
+                      <div key={entry.id} className="flex items-start gap-2 py-2 border-b border-ios-border/20 last:border-0">
+                        <div className="w-6 h-6 rounded-lg bg-ios-surface-2 flex items-center justify-center text-ios-text-secondary mt-0.5">
+                          <History size={12} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-semibold text-ios-text">{entry.action.toUpperCase()}</span>
+                            <span className="text-[10px] text-ios-text-secondary">{entry.section}</span>
+                          </div>
+                          <div className="text-xs text-ios-text truncate">{entry.entryName}</div>
+                          {entry.oldValue !== undefined && entry.newValue !== undefined && (
+                            <div className="text-[10px] text-ios-text-secondary">
+                              {entry.oldValue} → {entry.newValue}
+                              {entry.monthIndex !== undefined && ` (${months[entry.monthIndex] || ''})`}
+                            </div>
+                          )}
+                          <div className="text-[9px] text-ios-text-secondary/60 mt-0.5">{formatTimestamp(entry.timestamp)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
       </div>
 
@@ -494,6 +599,7 @@ export default function App() {
             { id: 'overview' as Tab, icon: <BarChart3 size={20} />, label: 'Overview' },
             { id: 'details' as Tab, icon: <Activity size={20} />, label: 'Details' },
             { id: 'debt' as Tab, icon: <CreditCard size={20} />, label: 'Debt' },
+            { id: 'audit' as Tab, icon: <Clock size={20} />, label: 'Activity' },
           ].map(tab => (
             <motion.button key={tab.id} whileTap={{ scale: 0.9 }} onClick={() => setActiveTab(tab.id)} className="flex flex-col items-center gap-1">
               <div className={activeTab === tab.id ? 'text-ios-blue' : 'text-ios-text-secondary'}>{tab.icon}</div>
