@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wallet, TrendingUp, TrendingDown, Home, CreditCard, PiggyBank,
   BarChart3, ArrowUpRight, ArrowDownRight, Activity, Plus, Trash2,
-  Edit3, Check, RotateCcw, Calendar, Clock, ChevronLeft, ChevronRight,
+  Edit3, Check, RotateCcw, Clock, 
   History
 } from 'lucide-react';
 import {
