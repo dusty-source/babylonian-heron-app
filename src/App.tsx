@@ -240,7 +240,7 @@ export default function App() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden scroll-container px-4 pb-24">
+      <div className="flex-1 overflow-y-auto scroll-container px-4 pb-24">
         <AnimatePresence mode="wait">
           {activeTab === 'overview' && (
             <motion.div key="overview" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3">
