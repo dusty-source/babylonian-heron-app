@@ -17,36 +17,6 @@ import {
 
 type Tab = 'overview' | 'details' | 'debt';
 
-const expenseIcons: Record<string, React.ReactNode> = {
-  'HOUSE RENT': <Home size={14} />,
-  'LIFT RENT': <Zap size={14} />,
-  'SCHOOL FEE': <Landmark size={14} />,
-  'SCHOOL TRANSPORT': <Car size={14} />,
-  'GROCERY': <ShoppingBag size={14} />,
-  'EQUIPMENT ANY': <Zap size={14} />,
-  'ELECTRICITY': <Zap size={14} />,
-  'INTERNET': <WifiIcon />,
-  'VEHICLE INSURANCE': <Car size={14} />,
-  'VEHICLE FUEL': <Car size={14} />,
-  'VEHICLE REPAIRS': <Car size={14} />,
-  'VEHICLE PARKING': <Car size={14} />,
-  'CELLPHONE SERVICES': <Smartphone size={14} />,
-  'MILK': <Milk size={14} />,
-  'FOODING': <Utensils size={14} />,
-  'CLOTHING': <Shirt size={14} />,
-};
-
-function WifiIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 12.55a11 11 0 0 1 14.08 0" />
-      <path d="M1.42 9a16 16 0 0 1 21.16 0" />
-      <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
-      <line x1="12" y1="20" x2="12.01" y2="20" />
-    </svg>
-  );
-}
-
 function AnimatedNumber({ value, prefix = '' }: { value: number; prefix?: string }) {
   return (
     <motion.span
