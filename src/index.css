@@ -45,6 +45,8 @@ body {
 }
 
 .scroll-container {
+  overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
