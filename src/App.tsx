@@ -297,7 +297,7 @@ export default function App() {
         <div className="flex gap-1.5 overflow-x-auto scroll-container pb-2 px-4">
           {months.map((m, i) => (
             <motion.button key={m} whileTap={{ scale: 0.92 }} onClick={() => setSelectedMonth(i)}
-              className={`px-2.5 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${
+              className={`shrink-0 px-2.5 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${
                 selectedMonth === i ? 'bg-ios-blue text-white ios-shadow-sm' : 'bg-ios-surface-2 text-ios-text-secondary'
               }`}>
               {m}
