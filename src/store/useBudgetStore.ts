@@ -116,7 +116,7 @@ function createEmptyYear(year: string): YearData {
 }
 
 function migrateLegacyData(): BudgetState {
-  const ts = now();
+  
   const y2026 = createEmptyYear('2026');
   const y2027 = createEmptyYear('2027');
 
@@ -200,15 +200,7 @@ export function useBudgetStore() {
 
   const currentYear = state.years[state.activeYear];
 
-  const addAudit = useCallback((year: string, entry: Omit<AuditEntry, 'id' | 'timestamp'>) => {
-    setState(prev => {
-      const y = prev.years[year];
-      if (!y) return prev;
-      const audit: AuditEntry = { ...entry, id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, timestamp: now() };
-      const updated = { ...y, auditLog: [audit, ...y.auditLog].slice(0, 100), modifiedAt: now() };
-      return { ...prev, years: { ...prev.years, [year]: updated } };
-    });
-  }, []);
+  
 
   const updateEntryValue = useCallback((
     section: keyof YearData,
