@@ -45,10 +45,9 @@ body {
 }
 
 .scroll-container {
-  overflow-y: auto;
-  overflow-x: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 .scroll-container::-webkit-scrollbar {
