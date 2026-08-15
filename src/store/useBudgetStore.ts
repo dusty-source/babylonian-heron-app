@@ -202,7 +202,7 @@ export function useBudgetStore() {
 
   
 
-  const updateEntryValue = useCallback((
+    const updateEntryValue = useCallback((
     section: keyof YearData,
     entryId: string,
     monthIndex: number,
@@ -211,6 +211,8 @@ export function useBudgetStore() {
     setState(prev => {
       const y = prev.years[prev.activeYear];
       if (!y) return prev;
+      
+      // Update the requested entry
       const entries = [...(y[section] as DataEntry[])];
       const idx = entries.findIndex(e => e.id === entryId);
       if (idx === -1) return prev;
@@ -221,9 +223,54 @@ export function useBudgetStore() {
       entry.values = newValues;
       entry.modifiedAt = now();
       entries[idx] = entry;
-      const updated = { ...y, [section]: entries, modifiedAt: now() };
+      
+      let updated: YearData = { ...y, [section]: entries, modifiedAt: now() };
+      
+      // Auto-sync outgoing totals when detail sections change
+      const detailToOutgoing: Record<string, string> = {
+        householdExpenses: 'house70',
+        debtRepayment: 'debt20',
+        savingsData: 'saving10',
+      };
+      
+      if (detailToOutgoing[section]) {
+        const outgoingId = detailToOutgoing[section];
+        const detailEntries = updated[section] as DataEntry[];
+        const newTotal = detailEntries.reduce((sum, e) => sum + (e.values[monthIndex] || 0), 0);
+        
+        const outEntries = [...updated.outgoingEntries];
+        const outIdx = outEntries.findIndex(e => e.id === outgoingId);
+        if (outIdx !== -1) {
+          const outEntry = { ...outEntries[outIdx] };
+          const outVals = [...outEntry.values];
+          outVals[monthIndex] = newTotal;
+          outEntry.values = outVals;
+          outEntry.modifiedAt = now();
+          outEntries[outIdx] = outEntry;
+          updated = { ...updated, outgoingEntries: outEntries };
+        }
+      }
+      
+      // Recalculate status entries based on allocation - outgoing
+      const statusEntries = [...updated.statusEntries];
+      const allocEntries = updated.allocationEntries;
+      const outEntries = updated.outgoingEntries;
+      
+      statusEntries.forEach((se, i) => {
+        const allocEntry = allocEntries.find(ae => ae.id === se.id);
+        const outEntry = outEntries.find(oe => oe.id === se.id);
+        if (allocEntry && outEntry) {
+          const newStatus = allocEntry.values[monthIndex] - outEntry.values[monthIndex];
+          const newVals = [...se.values];
+          newVals[monthIndex] = newStatus;
+          statusEntries[i] = { ...se, values: newVals, modifiedAt: now() };
+        }
+      });
+      updated = { ...updated, statusEntries };
+      
       const newState = { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
-      // audit
+      
+      // Audit log
       const auditY = newState.years[newState.activeYear];
       const audit: AuditEntry = {
         id: `audit-${Date.now()}`, action: 'edit', section: String(section),
@@ -272,7 +319,9 @@ export function useBudgetStore() {
       const id = `${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
       const ts = now();
       entries.push({ id, name, values: new Array(12).fill(0), createdAt: ts, modifiedAt: ts });
-      const updated = { ...y, [section]: entries, modifiedAt: ts };
+      
+      let updated: YearData = { ...y, [section]: entries, modifiedAt: ts };
+      
       const newState = { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
       const auditY = newState.years[newState.activeYear];
       const audit: AuditEntry = {
@@ -294,7 +343,46 @@ export function useBudgetStore() {
       const entries = (y[section] as DataEntry[]);
       const target = entries.find(e => e.id === entryId);
       const filtered = entries.filter(e => e.id !== entryId);
-      const updated = { ...y, [section]: filtered, modifiedAt: now() };
+      
+      let updated: YearData = { ...y, [section]: filtered, modifiedAt: now() };
+      
+      // Auto-sync outgoing totals when detail sections change
+      const detailToOutgoing: Record<string, string> = {
+        householdExpenses: 'house70',
+        debtRepayment: 'debt20',
+        savingsData: 'saving10',
+      };
+      
+      if (detailToOutgoing[section] && target) {
+        const outgoingId = detailToOutgoing[section];
+        // Recalculate for ALL months since deleting an entry affects every month
+        const outEntries = [...updated.outgoingEntries];
+        const outIdx = outEntries.findIndex(e => e.id === outgoingId);
+        if (outIdx !== -1) {
+          const outEntry = { ...outEntries[outIdx] };
+          const newVals = outEntry.values.map((_, mi) => 
+            filtered.reduce((sum, e) => sum + (e.values[mi] || 0), 0)
+          );
+          outEntry.values = newVals;
+          outEntry.modifiedAt = now();
+          outEntries[outIdx] = outEntry;
+          updated = { ...updated, outgoingEntries: outEntries };
+        }
+        
+        // Recalculate status for all months
+        const statusEntries = [...updated.statusEntries];
+        const allocEntries = updated.allocationEntries;
+        statusEntries.forEach((se, i) => {
+          const allocEntry = allocEntries.find(ae => ae.id === se.id);
+          const outEntry = outEntries.find(oe => oe.id === se.id);
+          if (allocEntry && outEntry) {
+            const newVals = se.values.map((_, mi) => allocEntry.values[mi] - outEntry.values[mi]);
+            statusEntries[i] = { ...se, values: newVals, modifiedAt: now() };
+          }
+        });
+        updated = { ...updated, statusEntries };
+      }
+      
       const newState = { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
       if (target) {
         const auditY = newState.years[newState.activeYear];
