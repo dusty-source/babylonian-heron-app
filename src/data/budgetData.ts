@@ -1,6 +1,6 @@
 export const months = [
-  'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER',
-  'NOVEMBER', 'DECEMBER', 'JANUARY', 'FEBRUARY', 'MARCH'
+  'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+  'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
 ];
 
 export const formatCurrency = (val: number) => {
