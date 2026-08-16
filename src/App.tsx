@@ -400,7 +400,7 @@ export default function App() {
   return (
     <div className="h-full flex flex-col bg-ios-bg gradient-mesh">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="px-5 pt-6 pb-2">
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="px-5 pt-2 pb-2">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold gradient-text">Babylonian Heron</h1>
@@ -425,7 +425,7 @@ export default function App() {
       {/* Year Switcher */}
       <div className="px-4 mb-2">
         <div className="flex items-center gap-2">
-          <div className="flex-1 flex gap-1.5 overflow-x-auto scroll-container pb-1">
+          <div className="flex-1 flex gap-1.5 overflow-x-auto scroll-x pb-1">
             {state.availableYears.map(year => (
               <motion.button key={year} whileTap={{ scale: 0.92 }} onClick={() => { setActiveYear(year); setSelectedMonth(0); }}
                 className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
@@ -561,7 +561,7 @@ export default function App() {
 
       {/* Month Selector */}
       <div className="mb-3">
-        <div className="flex gap-1.5 overflow-x-auto scroll-container pb-2 px-4">
+        <div className="flex gap-1.5 overflow-x-auto scroll-x pb-2 px-4">
           {months.map((m, i) => (
             <motion.button key={m} whileTap={{ scale: 0.92 }} onClick={() => setSelectedMonth(i)}
               className={`px-2.5 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${
