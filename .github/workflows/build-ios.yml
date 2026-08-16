@@ -14,9 +14,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Install Capacitor CLI
+        run: npm install -D @capacitor/cli
 
       - name: Build web assets
         run: npm run build
