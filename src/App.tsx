@@ -1,19 +1,23 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wallet, TrendingUp, TrendingDown, Home, CreditCard, PiggyBank,
   BarChart3, ArrowUpRight, ArrowDownRight, Activity, Plus, Trash2,
-  Edit3, Check, RotateCcw, Clock, 
-  History
+  Edit3, Check, RotateCcw, Clock, AlertTriangle, Lock, Unlock,
+  Flame, Zap, Settings, ChevronRight, X
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie
 } from 'recharts';
 import { useBudgetStore } from './store/useBudgetStore';
-import { formatCurrency, getStatusColor, getRemarkColor } from './data/budgetData';
+import { formatCurrency, getStatusColor, getRemarkColor, getBurnRingColor, getBurnStatusColor } from './data/budgetData';
+import type { BurnRate } from './data/budgetData';
 
 type Tab = 'overview' | 'details' | 'debt' | 'audit';
 type EditSection = 'income' | 'household' | 'debt-repay' | 'savings' | 'debt-prog' | null;
+type PasscodeMode = 'set' | 'verify' | null;
+
+/* ─── Reusable Components ─────────────────────────────────── */
 
 function AnimatedNumber({ value, prefix = '' }: { value: number; prefix?: string }) {
   return (
@@ -100,6 +104,175 @@ function formatTimestamp(iso: string) {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
+/* ─── Phase 1: BurnRateCard ───────────────────────────────── */
+
+function BurnRateCard({ burn }: { burn: BurnRate }) {
+  const radius = 30;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (burn.usedPct / 100) * circumference;
+  const color = getBurnRingColor(burn.usedPct);
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.5 }}
+      className="glass-card rounded-2xl p-4 ios-shadow">
+      <div className="flex items-center gap-3">
+        <div className="burn-ring">
+          <svg viewBox="0 0 72 72">
+            <circle className="burn-ring-bg" cx="36" cy="36" r={radius} />
+            <circle className="burn-ring-progress" cx="36" cy="36" r={radius}
+              stroke={color} strokeDasharray={circumference} strokeDashoffset={offset} />
+          </svg>
+          <div className="burn-ring-text" style={{ color }}>{Math.round(burn.usedPct)}%</div>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs text-ios-text-secondary mb-0.5">Daily Allowance</div>
+          <div className="text-lg font-bold tabular-nums" style={{ color: getBurnStatusColor(burn.status) }}>
+            {formatCurrency(Math.round(burn.dailyAllowance))}
+            <span className="text-[10px] font-normal text-ios-text-secondary ml-1">/day</span>
+          </div>
+          <div className="text-[10px] text-ios-text-secondary mt-0.5">
+            {burn.isCapReached ? (
+              <span className="text-ios-red font-semibold">CAP BROKEN — {formatCurrency(burn.spent - burn.cap)} over</span>
+            ) : burn.daysUntilExhaustion <= burn.daysRemaining ? (
+              <span>Exhausts in <span className="font-semibold text-ios-orange">{burn.daysUntilExhaustion} days</span></span>
+            ) : (
+              <span>Safe — <span className="font-semibold text-ios-green">{burn.daysRemaining} days left</span></span>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-ios-border/20">
+        <div className="text-center">
+          <div className="text-[10px] text-ios-text-secondary">Spent</div>
+          <div className="text-xs font-semibold text-ios-text tabular-nums">{formatCurrency(burn.spent)}</div>
+        </div>
+        <div className="text-center">
+          <div className="text-[10px] text-ios-text-secondary">Cap</div>
+          <div className="text-xs font-semibold text-ios-text tabular-nums">{formatCurrency(burn.cap)}</div>
+        </div>
+        <div className="text-center">
+          <div className="text-[10px] text-ios-text-secondary">Remaining</div>
+          <div className="text-xs font-semibold tabular-nums" style={{ color: burn.remaining > 0 ? '#30d158' : '#ff453a' }}>
+            {formatCurrency(burn.remaining)}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─── Phase 1: CrashBanner ──────────────────────────────────── */
+
+function CrashBanner({ burn }: { burn: BurnRate }) {
+  if (burn.usedPct < 60) return null;
+
+  let message = '';
+  let icon = <AlertTriangle size={16} />;
+  let bg = '';
+
+  if (burn.usedPct >= 100) {
+    message = `BUDGET BROKEN — You are ${formatCurrency(burn.spent - burn.cap)} over the 70% household cap. Stop spending.`;
+    bg = 'rgba(255,55,95,0.12)';
+  } else if (burn.usedPct >= 85) {
+    message = `DISASTER IN MAKING — At this rate, your budget crashes in ${burn.daysUntilExhaustion} days. Slow down now.`;
+    bg = 'rgba(255,55,95,0.08)';
+  } else {
+    message = `WATCH OUT — ${Math.round(burn.usedPct)}% of household budget used. Pace yourself.`;
+    bg = 'rgba(255,159,10,0.08)';
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }}
+      className="crash-banner rounded-xl px-4 py-3 mx-4 mb-3" style={{ background: bg }}>
+      <div className="flex items-center gap-2">
+        <div className="crash-icon-wrap" style={{ color: burn.usedPct >= 85 ? '#ff375f' : '#ff9f0a' }}>{icon}</div>
+        <span className="text-[11px] font-semibold leading-tight" style={{ color: burn.usedPct >= 85 ? '#ff375f' : '#ff9f0a' }}>
+          {message}
+        </span>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─── Phase 1: PasscodeModal ──────────────────────────────── */
+
+function PasscodeModal({ mode, onVerify, onSet, onClose }: {
+  mode: PasscodeMode;
+  onVerify: (code: string) => boolean;
+  onSet: (code: string) => void;
+  onClose: () => void;
+}) {
+  const [input, setInput] = useState('');
+  const [error, setError] = useState(false);
+
+  const handleKey = (key: string) => {
+    if (input.length < 4) {
+      const next = input + key;
+      setInput(next);
+      if (next.length === 4) {
+        setTimeout(() => {
+          if (mode === 'set') {
+            onSet(next);
+            setInput('');
+            onClose();
+          } else {
+            if (onVerify(next)) {
+              setInput('');
+              onClose();
+            } else {
+              setError(true);
+              setTimeout(() => { setError(false); setInput(''); }, 400);
+            }
+          }
+        }, 150);
+      }
+    }
+  };
+
+  const handleBackspace = () => setInput(prev => prev.slice(0, -1));
+
+  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="passcode-overlay">
+      <div className="absolute top-6 right-6">
+        <button onClick={onClose} className="w-10 h-10 rounded-full bg-ios-surface-2 flex items-center justify-center text-ios-text-secondary">
+          <X size={18} />
+        </button>
+      </div>
+      <div className="text-center mb-8">
+        <div className="w-14 h-14 rounded-2xl bg-ios-blue/20 flex items-center justify-center mx-auto mb-4">
+          <Lock size={24} className="text-ios-blue" />
+        </div>
+        <h3 className="text-lg font-semibold text-ios-text mb-1">
+          {mode === 'set' ? 'Set Passcode' : 'Enter Passcode'}
+        </h3>
+        <p className="text-xs text-ios-text-secondary">
+          {mode === 'set' ? 'Create a 4-digit override code' : 'Unlock to add expenses'}
+        </p>
+      </div>
+      <div className="passcode-dots">
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} className={`passcode-dot ${i < input.length ? 'filled' : ''} ${error ? 'animate-pulse' : ''}`}
+            style={error ? { borderColor: '#ff375f', background: '#ff375f' } : {}} />
+        ))}
+      </div>
+      <div className="passcode-pad">
+        {keys.map((k, i) => (
+          k === '' ? <div key={i} /> : (
+            <button key={i} onClick={() => k === '⌫' ? handleBackspace() : handleKey(k)}
+              className="passcode-key" style={k === '⌫' ? { fontSize: 18 } : {}}>
+              {k}
+            </button>
+          )
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─── Main App ────────────────────────────────────────────── */
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [selectedMonth, setSelectedMonth] = useState(0);
@@ -110,9 +283,16 @@ export default function App() {
   const [newYearVal, setNewYearVal] = useState('');
   const [showYearMenu, setShowYearMenu] = useState(false);
 
+  /* Phase 1 state */
+  const [passcodeMode, setPasscodeMode] = useState<PasscodeMode>(null);
+  const [capOverride, setCapOverride] = useState(false);
+  const [showCapToast, setShowCapToast] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
   const store = useBudgetStore();
   const { state, currentYear, updateEntryValue, updateEntryName, addEntry, deleteEntry,
     setActiveYear, addYear, deleteYear, resetToDefaults,
+    autoAllocate, setPasscode, verifyPasscode, getBurnRate,
     getIncomeTotal, getOutgoingTotal, getAllocationTotal, getHouseholdTotal, getDebtRepaymentTotal } = store;
 
   const months = currentYear?.months || [];
@@ -123,6 +303,23 @@ export default function App() {
   const allocationTotal = getAllocationTotal(selectedMonth);
   const householdTotal = getHouseholdTotal(selectedMonth);
   const debtRepayTotal = getDebtRepaymentTotal(selectedMonth);
+
+  /* Phase 1: cap check for selected month */
+  const selectedMonthCap = useMemo(() => {
+    if (!currentYear) return null;
+    const capEntry = currentYear.allocationEntries.find(e => e.id === 'house70');
+    const cap = capEntry?.values[selectedMonth] || 0;
+    const spent = currentYear.householdExpenses.reduce((sum, e) => sum + (e.values[selectedMonth] || 0), 0);
+    return { cap, spent, isCapReached: cap > 0 && spent >= cap };
+  }, [currentYear, selectedMonth]);
+
+  /* Phase 1: burn rate for current calendar month */
+  const burnRate = useMemo(() => getBurnRate(), [getBurnRate]);
+
+  /* Reset cap override when month/year changes */
+  useEffect(() => {
+    setCapOverride(false);
+  }, [selectedMonth, state.activeYear]);
 
   const grandIncoming = useMemo(() => months.reduce((s, _, i) => s + getIncomeTotal(i), 0), [months, getIncomeTotal]);
   const grandOutgoing = useMemo(() => months.reduce((s, _, i) => s + getOutgoingTotal(i), 0), [months, getOutgoingTotal]);
@@ -147,10 +344,20 @@ export default function App() {
     }));
   }, [currentYear, selectedMonth]);
 
+  /* Phase 1: handleAddEntry with cap lock */
   const handleAddEntry = (section: keyof typeof currentYear) => {
     if (!newEntryName.trim()) return;
+
+    if (section === 'householdExpenses' && selectedMonthCap?.isCapReached && !capOverride) {
+      setShowCapToast(true);
+      setTimeout(() => setShowCapToast(false), 3000);
+      setPasscodeMode('verify');
+      return;
+    }
+
     addEntry(section, newEntryName.trim().toUpperCase());
     setNewEntryName('');
+    setCapOverride(false);
   };
 
   const handleAddYear = () => {
@@ -160,7 +367,13 @@ export default function App() {
     setShowAddYear(false);
   };
 
-  const SectionHeader = ({ title, section, onAdd }: { title: string; section: EditSection; onAdd?: () => void }) => (
+  /* Phase 1: income edit wrapper that triggers auto-allocation */
+  const handleIncomeEdit = (entryId: string, monthIndex: number, value: number) => {
+    updateEntryValue('incomeEntries', entryId, monthIndex, value);
+    setTimeout(() => autoAllocate(monthIndex), 0);
+  };
+
+  const SectionHeader = ({ title, section, onAdd, locked }: { title: string; section: EditSection; onAdd?: () => void; locked?: boolean }) => (
     <div className="flex items-center justify-between mb-3">
       <span className="text-sm font-semibold text-ios-text">{title}</span>
       <div className="flex items-center gap-2">
@@ -168,8 +381,9 @@ export default function App() {
           <div className="flex items-center gap-1">
             <input value={newEntryName} onChange={e => setNewEntryName(e.target.value)} placeholder="NAME"
               className="w-24 bg-ios-surface-2 rounded-lg px-2 py-1 text-[10px] text-ios-text border border-ios-border/30 focus:border-ios-blue outline-none" />
-            <motion.button whileTap={{ scale: 0.8 }} onClick={onAdd} className="w-6 h-6 rounded-lg bg-ios-green/20 flex items-center justify-center text-ios-green">
-              <Plus size={12} />
+            <motion.button whileTap={{ scale: 0.8 }} onClick={onAdd}
+              className={`w-6 h-6 rounded-lg flex items-center justify-center ${locked ? 'bg-ios-red/20 text-ios-red' : 'bg-ios-green/20 text-ios-green'}`}>
+              {locked ? <Lock size={10} /> : <Plus size={12} />}
             </motion.button>
           </div>
         )}
@@ -193,6 +407,10 @@ export default function App() {
             <p className="text-xs text-ios-text-secondary mt-0.5">Financial Dashboard</p>
           </div>
           <div className="flex items-center gap-2">
+            <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowSettings(true)}
+              className="w-9 h-9 rounded-full bg-ios-surface-2 flex items-center justify-center ios-shadow-sm text-ios-text-secondary">
+              <Settings size={16} />
+            </motion.button>
             <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowResetConfirm(true)}
               className="w-9 h-9 rounded-full bg-ios-surface-2 flex items-center justify-center ios-shadow-sm text-ios-text-secondary">
               <RotateCcw size={16} />
@@ -242,6 +460,9 @@ export default function App() {
         )}
       </div>
 
+      {/* Phase 1: Crash Banner */}
+      {burnRate && <CrashBanner burn={burnRate} />}
+
       {/* Add Year Modal */}
       <AnimatePresence>
         {showAddYear && (
@@ -283,6 +504,52 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Phase 1: Settings Modal */}
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-6">
+            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+              className="glass-card rounded-2xl p-5 w-full max-w-xs ios-shadow">
+              <h3 className="text-sm font-semibold text-ios-text mb-3">Settings</h3>
+              <button onClick={() => { setPasscodeMode('set'); setShowSettings(false); }}
+                className="w-full text-left px-3 py-2.5 rounded-xl bg-ios-surface-2 text-xs text-ios-text mb-2 flex items-center justify-between">
+                <span>{state.passcode ? 'Change Passcode' : 'Set Passcode'}</span>
+                <ChevronRight size={14} className="text-ios-text-secondary" />
+              </button>
+              {state.passcode && (
+                <div className="text-[10px] text-ios-text-secondary px-1 mb-2">
+                  Passcode is set. Used to override 70% household cap lock.
+                </div>
+              )}
+              <button onClick={() => setShowSettings(false)}
+                className="w-full py-2 rounded-xl bg-ios-blue/20 text-xs font-medium text-ios-blue mt-2">Done</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Phase 1: Passcode Modal */}
+      <AnimatePresence>
+        {passcodeMode && (
+          <PasscodeModal
+            mode={passcodeMode}
+            onVerify={(code) => {
+              const ok = verifyPasscode(code);
+              if (ok) setCapOverride(true);
+              return ok;
+            }}
+            onSet={(code) => setPasscode(code)}
+            onClose={() => setPasscodeMode(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Phase 1: Cap Block Toast */}
+      <div className={`cap-toast ${showCapToast ? 'active' : ''}`}>
+        <Lock size={14} className="inline mr-1" /> 70% Cap Reached — Passcode Required
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 gap-3 px-4 mb-3">
         <SummaryCard title="Total In" value={grandIncoming} icon={<TrendingUp size={16} />} color="#30d158" subtitle={state.activeYear} delay={0.1} />
@@ -297,7 +564,7 @@ export default function App() {
         <div className="flex gap-1.5 overflow-x-auto scroll-container pb-2 px-4">
           {months.map((m, i) => (
             <motion.button key={m} whileTap={{ scale: 0.92 }} onClick={() => setSelectedMonth(i)}
-              className={`shrink-0 px-2.5 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${
+              className={`px-2.5 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${
                 selectedMonth === i ? 'bg-ios-blue text-white ios-shadow-sm' : 'bg-ios-surface-2 text-ios-text-secondary'
               }`}>
               {m}
@@ -323,6 +590,12 @@ export default function App() {
         <AnimatePresence mode="wait">
           {activeTab === 'overview' && (
             <motion.div key="overview" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3">
+
+              {/* Phase 1: Burn Rate Card (only for current year) */}
+              {burnRate && (
+                <BurnRateCard burn={burnRate} />
+              )}
+
               <div className="glass-card rounded-2xl p-4 ios-shadow">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-semibold text-ios-text">{currentMonth} {state.activeYear}</span>
@@ -361,7 +634,7 @@ export default function App() {
                   {currentYear.incomeEntries.map(entry => (
                     <EditableRow key={entry.id} name={entry.name} value={entry.values[selectedMonth]}
                       isEditing={editSection === 'income'}
-                      onChange={v => updateEntryValue('incomeEntries', entry.id, selectedMonth, v)}
+                      onChange={v => handleIncomeEdit(entry.id, selectedMonth, v)}
                       onNameChange={n => updateEntryName('incomeEntries', entry.id, n)}
                       onDelete={() => deleteEntry('incomeEntries', entry.id)} />
                   ))}
@@ -437,7 +710,7 @@ export default function App() {
           {activeTab === 'details' && (
             <motion.div key="details" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3">
               <div className="glass-card rounded-2xl p-4 ios-shadow">
-                <SectionHeader title="Household Expenses" section="household" onAdd={() => handleAddEntry('householdExpenses')} />
+                <SectionHeader title="Household Expenses" section="household" onAdd={() => handleAddEntry('householdExpenses')} locked={selectedMonthCap?.isCapReached && !capOverride} />
                 <div className="space-y-1">
                   {currentYear.householdExpenses.map(entry => (
                     <EditableRow key={entry.id} name={entry.name} value={entry.values[selectedMonth]}
@@ -450,6 +723,18 @@ export default function App() {
                     <span className="text-xs font-semibold text-ios-text">Total</span>
                     <span className="text-xs font-bold text-ios-red">{formatCurrency(householdTotal)}</span>
                   </div>
+                  {/* Phase 1: Cap indicator */}
+                  {selectedMonthCap && selectedMonthCap.cap > 0 && (
+                    <div className="mt-2">
+                      <div className="flex justify-between text-[10px] mb-1">
+                        <span className="text-ios-text-secondary">70% Cap Usage</span>
+                        <span className={selectedMonthCap.isCapReached ? 'text-ios-red font-semibold' : 'text-ios-text-secondary'}>
+                          {Math.min(100, Math.round((selectedMonthCap.spent / selectedMonthCap.cap) * 100))}%
+                        </span>
+                      </div>
+                      <ProgressBar value={selectedMonthCap.spent} max={selectedMonthCap.cap} color={selectedMonthCap.isCapReached ? '#ff375f' : '#0a84ff'} />
+                    </div>
+                  )}
                 </div>
               </div>
 
