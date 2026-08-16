@@ -40,6 +40,7 @@ export interface BudgetState {
   years: Record<string, YearData>;
   activeYear: string;
   availableYears: string[];
+  passcode: string | null;
 }
 
 const STORAGE_KEY = 'babylonian-heron-data-v2';
@@ -116,11 +117,9 @@ function createEmptyYear(year: string): YearData {
 }
 
 function migrateLegacyData(): BudgetState {
-  
   const y2026 = createEmptyYear('2026');
   const y2027 = createEmptyYear('2027');
 
-  // Map original 10 months: Jun 2026 (idx 5) through Mar 2027 (idx 2)
   const origIncome = [[176588,171000,176000,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,25000,0,0,0,0,0,0,0,0],[49661,0,0,0,0,0,0,0,0,0]];
   const origOutgoing = [[0,0,0,0,0,0,0,0,0,0],[145887,143400,44680,35380,112300,35380,35380,112300,35380,35380],[47100,47100,47100,47100,47100,47100,47100,47100,42100,42100]];
   const origAlloc = [[17658.8,17100,17600,0,0,0,0,0,0,0],[123611.6,119700,123200,0,0,0,0,0,0,0],[35317.6,34200,35200,0,0,0,0,0,0,0]];
@@ -130,9 +129,8 @@ function migrateLegacyData(): BudgetState {
   const origSavings = [[0,0,0,0,0,0,0,0,0,0]];
   const origDebtProg = [[1273188,1240636.91,1207841.687,1174800.499,1141511.503,1107972.839,1074182.636,1040139.006,1005840.048,971283.8485],[36000,31500,27000,22500,18000,13500,9000,4500,0,0],[40000,0,0,0,0,0,0,0,0,0]];
 
-  // 2026 gets months 0-6 of original data (Jun-Dec)
   for (let i = 0; i < 7; i++) {
-    const targetIdx = 5 + i; // Jun=5, Jul=6, ..., Dec=11
+    const targetIdx = 5 + i;
     y2026.incomeEntries.forEach((e, ei) => { e.values[targetIdx] = origIncome[ei][i]; });
     y2026.outgoingEntries.forEach((e, ei) => { e.values[targetIdx] = origOutgoing[ei][i]; });
     y2026.allocationEntries.forEach((e, ei) => { e.values[targetIdx] = origAlloc[ei][i]; });
@@ -142,9 +140,8 @@ function migrateLegacyData(): BudgetState {
     y2026.savingsData.forEach((e, ei) => { e.values[targetIdx] = origSavings[ei][i]; });
     y2026.debtProgression.forEach((e, ei) => { e.values[targetIdx] = origDebtProg[ei][i]; });
   }
-  // 2027 gets months 7-9 of original data (Jan-Mar)
   for (let i = 7; i < 10; i++) {
-    const targetIdx = i - 7; // Jan=0, Feb=1, Mar=2
+    const targetIdx = i - 7;
     y2027.incomeEntries.forEach((e, ei) => { e.values[targetIdx] = origIncome[ei][i]; });
     y2027.outgoingEntries.forEach((e, ei) => { e.values[targetIdx] = origOutgoing[ei][i]; });
     y2027.allocationEntries.forEach((e, ei) => { e.values[targetIdx] = origAlloc[ei][i]; });
@@ -155,7 +152,6 @@ function migrateLegacyData(): BudgetState {
     y2027.debtProgression.forEach((e, ei) => { e.values[targetIdx] = origDebtProg[ei][i]; });
   }
 
-  // Remarks
   const origRemarksS = ['HAND TO MOUTH','HAND TO MOUTH','HAND TO MOUTH','RETAINER','RETAINER','RETAINER','RETAINER','RETAINER','RETAINER','RETAINER'];
   const origRemarksH = ['WISHFUL FLOCK','WISHFUL FLOCK','WISHFUL FLOCK','IN CONTROL','IN CONTROL','IN CONTROL','IN CONTROL','IN CONTROL','IN CONTROL','IN CONTROL'];
   const origRemarksD = ['DISASTER IN MAKING','DISASTER IN MAKING','BRAVO!','BRAVO!','BRAVO!','BRAVO!','BRAVO!','BRAVO!','BRAVO!','BRAVO!'];
@@ -174,13 +170,18 @@ function migrateLegacyData(): BudgetState {
     years: { '2026': y2026, '2027': y2027 },
     activeYear: '2026',
     availableYears: ['2026', '2027'],
+    passcode: null,
   };
 }
 
 function loadState(): BudgetState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (!('passcode' in parsed)) parsed.passcode = null;
+      return parsed;
+    }
   } catch { /* ignore */ }
   return migrateLegacyData();
 }
@@ -200,9 +201,7 @@ export function useBudgetStore() {
 
   const currentYear = state.years[state.activeYear];
 
-  
-
-    const updateEntryValue = useCallback((
+  const updateEntryValue = useCallback((
     section: keyof YearData,
     entryId: string,
     monthIndex: number,
@@ -211,8 +210,6 @@ export function useBudgetStore() {
     setState(prev => {
       const y = prev.years[prev.activeYear];
       if (!y) return prev;
-      
-      // Update the requested entry
       const entries = [...(y[section] as DataEntry[])];
       const idx = entries.findIndex(e => e.id === entryId);
       if (idx === -1) return prev;
@@ -223,54 +220,8 @@ export function useBudgetStore() {
       entry.values = newValues;
       entry.modifiedAt = now();
       entries[idx] = entry;
-      
-      let updated: YearData = { ...y, [section]: entries, modifiedAt: now() };
-      
-      // Auto-sync outgoing totals when detail sections change
-      const detailToOutgoing: Record<string, string> = {
-        householdExpenses: 'house70',
-        debtRepayment: 'debt20',
-        savingsData: 'saving10',
-      };
-      
-      if (detailToOutgoing[section]) {
-        const outgoingId = detailToOutgoing[section];
-        const detailEntries = updated[section] as DataEntry[];
-        const newTotal = detailEntries.reduce((sum, e) => sum + (e.values[monthIndex] || 0), 0);
-        
-        const outEntries = [...updated.outgoingEntries];
-        const outIdx = outEntries.findIndex(e => e.id === outgoingId);
-        if (outIdx !== -1) {
-          const outEntry = { ...outEntries[outIdx] };
-          const outVals = [...outEntry.values];
-          outVals[monthIndex] = newTotal;
-          outEntry.values = outVals;
-          outEntry.modifiedAt = now();
-          outEntries[outIdx] = outEntry;
-          updated = { ...updated, outgoingEntries: outEntries };
-        }
-      }
-      
-      // Recalculate status entries based on allocation - outgoing
-      const statusEntries = [...updated.statusEntries];
-      const allocEntries = updated.allocationEntries;
-      const outEntries = updated.outgoingEntries;
-      
-      statusEntries.forEach((se, i) => {
-        const allocEntry = allocEntries.find(ae => ae.id === se.id);
-        const outEntry = outEntries.find(oe => oe.id === se.id);
-        if (allocEntry && outEntry) {
-          const newStatus = allocEntry.values[monthIndex] - outEntry.values[monthIndex];
-          const newVals = [...se.values];
-          newVals[monthIndex] = newStatus;
-          statusEntries[i] = { ...se, values: newVals, modifiedAt: now() };
-        }
-      });
-      updated = { ...updated, statusEntries };
-      
+      const updated = { ...y, [section]: entries, modifiedAt: now() };
       const newState = { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
-      
-      // Audit log
       const auditY = newState.years[newState.activeYear];
       const audit: AuditEntry = {
         id: `audit-${Date.now()}`, action: 'edit', section: String(section),
@@ -319,9 +270,7 @@ export function useBudgetStore() {
       const id = `${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
       const ts = now();
       entries.push({ id, name, values: new Array(12).fill(0), createdAt: ts, modifiedAt: ts });
-      
-      let updated: YearData = { ...y, [section]: entries, modifiedAt: ts };
-      
+      const updated = { ...y, [section]: entries, modifiedAt: ts };
       const newState = { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
       const auditY = newState.years[newState.activeYear];
       const audit: AuditEntry = {
@@ -343,46 +292,7 @@ export function useBudgetStore() {
       const entries = (y[section] as DataEntry[]);
       const target = entries.find(e => e.id === entryId);
       const filtered = entries.filter(e => e.id !== entryId);
-      
-      let updated: YearData = { ...y, [section]: filtered, modifiedAt: now() };
-      
-      // Auto-sync outgoing totals when detail sections change
-      const detailToOutgoing: Record<string, string> = {
-        householdExpenses: 'house70',
-        debtRepayment: 'debt20',
-        savingsData: 'saving10',
-      };
-      
-      if (detailToOutgoing[section] && target) {
-        const outgoingId = detailToOutgoing[section];
-        // Recalculate for ALL months since deleting an entry affects every month
-        const outEntries = [...updated.outgoingEntries];
-        const outIdx = outEntries.findIndex(e => e.id === outgoingId);
-        if (outIdx !== -1) {
-          const outEntry = { ...outEntries[outIdx] };
-          const newVals = outEntry.values.map((_, mi) => 
-            filtered.reduce((sum, e) => sum + (e.values[mi] || 0), 0)
-          );
-          outEntry.values = newVals;
-          outEntry.modifiedAt = now();
-          outEntries[outIdx] = outEntry;
-          updated = { ...updated, outgoingEntries: outEntries };
-        }
-        
-        // Recalculate status for all months
-        const statusEntries = [...updated.statusEntries];
-        const allocEntries = updated.allocationEntries;
-        statusEntries.forEach((se, i) => {
-          const allocEntry = allocEntries.find(ae => ae.id === se.id);
-          const outEntry = outEntries.find(oe => oe.id === se.id);
-          if (allocEntry && outEntry) {
-            const newVals = se.values.map((_, mi) => allocEntry.values[mi] - outEntry.values[mi]);
-            statusEntries[i] = { ...se, values: newVals, modifiedAt: now() };
-          }
-        });
-        updated = { ...updated, statusEntries };
-      }
-      
+      const updated = { ...y, [section]: filtered, modifiedAt: now() };
       const newState = { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
       if (target) {
         const auditY = newState.years[newState.activeYear];
@@ -438,6 +348,61 @@ export function useBudgetStore() {
     return entries.reduce((sum, e) => sum + (e.values[monthIndex] || 0), 0);
   }, [currentYear]);
 
+  // ─── Phase 1: Auto-Allocation ────────────────────────────────
+
+  const autoAllocate = useCallback((monthIndex: number) => {
+    setState(prev => {
+      const yr = prev.years[prev.activeYear];
+      if (!yr) return prev;
+      const totalIncome = yr.incomeEntries.reduce((sum, e) => sum + (e.values[monthIndex] || 0), 0);
+      if (totalIncome <= 0) return prev;
+      const alloc = yr.allocationEntries.map(e => ({ ...e, values: [...e.values], modifiedAt: now() }));
+      const saveIdx = alloc.findIndex(e => e.id === 'saving10');
+      const houseIdx = alloc.findIndex(e => e.id === 'house70');
+      const debtIdx = alloc.findIndex(e => e.id === 'debt20');
+      if (saveIdx >= 0) alloc[saveIdx].values[monthIndex] = Math.round(totalIncome * 0.10);
+      if (houseIdx >= 0) alloc[houseIdx].values[monthIndex] = Math.round(totalIncome * 0.70);
+      if (debtIdx >= 0) alloc[debtIdx].values[monthIndex] = Math.round(totalIncome * 0.20);
+      const updated = { ...yr, allocationEntries: alloc, modifiedAt: now() };
+      return { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
+    });
+  }, []);
+
+  // ─── Phase 1: Passcode ───────────────────────────────────────
+
+  const setPasscode = useCallback((passcode: string | null) => {
+    setState(prev => ({ ...prev, passcode }));
+  }, []);
+
+  const verifyPasscode = useCallback((input: string) => {
+    return state.passcode !== null && state.passcode === input;
+  }, [state.passcode]);
+
+  // ─── Phase 1: Burn-Rate (real-time current month) ────────────
+
+  const getBurnRate = useCallback(() => {
+    const now = new Date();
+    const currentMonthIdx = now.getMonth();
+    const currentYearStr = String(now.getFullYear());
+    if (state.activeYear !== currentYearStr) return null;
+    const y = currentYear;
+    if (!y) return null;
+    const dayOfMonth = now.getDate();
+    const totalDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const spent = y.householdExpenses.reduce((sum, e) => sum + (e.values[currentMonthIdx] || 0), 0);
+    const capEntry = y.allocationEntries.find(e => e.id === 'house70');
+    const cap = capEntry?.values[currentMonthIdx] || 0;
+    if (cap <= 0 || dayOfMonth <= 0) return null;
+    const dailyVelocity = spent / dayOfMonth;
+    const remaining = Math.max(0, cap - spent);
+    const daysUntilExhaustion = dailyVelocity > 0 ? Math.ceil(remaining / dailyVelocity) : 999;
+    const daysRemaining = totalDays - dayOfMonth + 1;
+    const dailyAllowance = daysRemaining > 0 ? remaining / daysRemaining : 0;
+    const usedPct = Math.min(100, (spent / cap) * 100);
+    const status = usedPct >= 100 ? 'BROKEN' : usedPct >= 85 ? 'DISASTER IN MAKING' : usedPct >= 60 ? 'WATCH OUT' : usedPct >= 30 ? 'ON TRACK' : 'BRAVO!';
+    return { spent, cap, remaining, dailyVelocity, daysUntilExhaustion, daysRemaining, dailyAllowance, usedPct, isCapReached: spent >= cap, status };
+  }, [state.activeYear, currentYear]);
+
   const getIncomeTotal = useCallback((monthIndex: number) => getTotal('incomeEntries', monthIndex), [getTotal]);
   const getOutgoingTotal = useCallback((monthIndex: number) => getTotal('outgoingEntries', monthIndex), [getTotal]);
   const getAllocationTotal = useCallback((monthIndex: number) => getTotal('allocationEntries', monthIndex), [getTotal]);
@@ -456,6 +421,10 @@ export function useBudgetStore() {
     addYear,
     deleteYear,
     resetToDefaults,
+    autoAllocate,
+    setPasscode,
+    verifyPasscode,
+    getBurnRate,
     getIncomeTotal,
     getOutgoingTotal,
     getAllocationTotal,
