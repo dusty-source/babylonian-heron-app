@@ -25,3 +25,54 @@ export const getRemarkColor = (remark: string) => {
     default: return '#8e8e93';
   }
 };
+
+// ─── Phase 1: Burn-Rate & Allocation Helpers ─────────────────
+
+export const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+
+export interface BurnRate {
+  spent: number;
+  cap: number;
+  remaining: number;
+  dailyVelocity: number;
+  daysUntilExhaustion: number;
+  daysRemaining: number;
+  dailyAllowance: number;
+  usedPct: number;
+  isCapReached: boolean;
+  status: string;
+}
+
+export const calculateBurnRate = (
+  spent: number,
+  cap: number,
+  dayOfMonth: number,
+  totalDaysInMonth: number
+): BurnRate | null => {
+  if (cap <= 0 || dayOfMonth <= 0) return null;
+  const dailyVelocity = spent / dayOfMonth;
+  const remaining = Math.max(0, cap - spent);
+  const daysUntilExhaustion = dailyVelocity > 0 ? Math.ceil(remaining / dailyVelocity) : 999;
+  const daysRemaining = totalDaysInMonth - dayOfMonth + 1;
+  const dailyAllowance = daysRemaining > 0 ? remaining / daysRemaining : 0;
+  const usedPct = Math.min(100, (spent / cap) * 100);
+  const status = usedPct >= 100 ? 'BROKEN' : usedPct >= 85 ? 'DISASTER IN MAKING' : usedPct >= 60 ? 'WATCH OUT' : usedPct >= 30 ? 'ON TRACK' : 'BRAVO!';
+  return { spent, cap, remaining, dailyVelocity, daysUntilExhaustion, daysRemaining, dailyAllowance, usedPct, isCapReached: spent >= cap, status };
+};
+
+export const getBurnRingColor = (usedPct: number) => {
+  if (usedPct >= 85) return '#ff375f';
+  if (usedPct >= 60) return '#ff9f0a';
+  return '#30d158';
+};
+
+export const getBurnStatusColor = (status: string) => {
+  switch (status) {
+    case 'BRAVO!': return '#30d158';
+    case 'ON TRACK': return '#0a84ff';
+    case 'WATCH OUT': return '#ff9f0a';
+    case 'DISASTER IN MAKING': return '#ff375f';
+    case 'BROKEN': return '#ff453a';
+    default: return '#8e8e93';
+  }
+};
