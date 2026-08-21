@@ -321,3 +321,36 @@ select {
   background-position: right 8px center;
   padding-right: 24px;
 }
+
+/* ─── Phase 3: Tax Ring ───────────────────────────────────── */
+.tax-ring {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  flex-shrink: 0;
+}
+.tax-ring svg {
+  transform: rotate(-90deg);
+  width: 80px;
+  height: 80px;
+}
+.tax-ring-bg {
+  fill: none;
+  stroke: rgba(255,255,255,0.08);
+  stroke-width: 8;
+}
+.tax-ring-progress {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ─── Phase 3: Windfall Glow ──────────────────────────────── */
+.windfall-glow {
+  animation: windfallPulse 2s ease-in-out infinite;
+}
+@keyframes windfallPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 214, 10, 0.2); }
+  50% { box-shadow: 0 0 20px 4px rgba(255, 214, 10, 0.1); }
+}
