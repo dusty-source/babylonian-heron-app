@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import { useBudgetStore } from './store/useBudgetStore';
 import type { TaxEntry, WindfallResult } from './store/useBudgetStore';
-import { formatCurrency, getStatusColor, getRemarkColor, getBurnRingColor, getBurnStatusColor } from './data/budgetData';
+import { formatCurrency, getStatusColor, getRemarkColor, getBurnRingColor, getBurnStatusColor, getTaxCategoryColor } from './data/budgetData';
 import type { BurnRate } from './data/budgetData';
 
 type Tab = 'overview' | 'details' | 'debt' | 'tax' | 'audit';
