@@ -11,6 +11,7 @@ import {
   AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie
 } from 'recharts';
 import { useBudgetStore } from './store/useBudgetStore';
+import type { TaxEntry, WindfallResult } from './store/useBudgetStore';
 import { formatCurrency, getStatusColor, getRemarkColor, getBurnRingColor, getBurnStatusColor } from './data/budgetData';
 import type { BurnRate } from './data/budgetData';
 
@@ -429,7 +430,7 @@ function DebtSimulatorCard({ store }: { store: ReturnType<typeof useBudgetStore>
 
 /* ─── Phase 3: Windfall Modal ─────────────────────────────── */
 
-function WindfallModal({ data, onApply, onClose }: { data: WindfallResult; onApply: () => void; onClose: () => void }) {
+function WindfallModal({ data, activeYear, onApply, onClose }: { data: WindfallResult; activeYear: string; onApply: () => void; onClose: () => void }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-5">
@@ -457,7 +458,7 @@ function WindfallModal({ data, onApply, onClose }: { data: WindfallResult; onApp
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => { sessionStorage.setItem(`windfall-${state.activeYear}-${data.monthIndex}`, '1'); onClose(); }}
+          <button onClick={() => { sessionStorage.setItem(`windfall-${activeYear}-${data.monthIndex}`, '1'); onClose(); }}
             className="flex-1 py-2.5 rounded-xl bg-ios-surface-2 text-xs font-medium text-ios-text-secondary">Dismiss</button>
           <button onClick={() => { onApply(); onClose(); }}
             className="flex-1 py-2.5 rounded-xl bg-ios-yellow/20 text-xs font-bold text-ios-yellow">Apply</button>
@@ -582,7 +583,7 @@ export default function App() {
   };
 
   const handleAddYear = () => {
-    if (!newYearVal.trim() || !/^d{4}$/.test(newYearVal)) return;
+    if (!newYearVal.trim() || !/^\d{4}$/.test(newYearVal)) return;
     addYear(newYearVal.trim());
     setNewYearVal('');
     setShowAddYear(false);
@@ -771,6 +772,7 @@ export default function App() {
         {showWindfall && windfallData && (
           <WindfallModal
             data={windfallData}
+            activeYear={state.activeYear}
             onApply={() => applyWindfall(windfallData)}
             onClose={() => setShowWindfall(false)}
           />
@@ -1041,7 +1043,7 @@ export default function App() {
 
           {activeTab === 'debt' && (
             <motion.div key="debt" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3">
-              <DebtSimulatorCard store={store} selectedMonth={selectedMonth} />
+              <DebtSimulatorCard store={store} />
 
               <div className="glass-card rounded-2xl p-4 ios-shadow">
                 <SectionHeader title="Debt Progression" section="debt-prog" onAdd={() => handleAddEntry('debtProgression')} />
