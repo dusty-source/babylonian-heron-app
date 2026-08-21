@@ -84,7 +84,7 @@ export const TAX_CATEGORIES: Record<string, { label: string; color: string; icon
   elss: { label: 'ELSS', color: '#0a84ff', icon: 'TrendingUp' },
   nps: { label: 'NPS', color: '#bf5af2', icon: 'Briefcase' },
   sukanya: { label: 'Sukanya', color: '#ff375f', icon: 'Heart' },
-  insurance: { label: 'Insurance', color: '#ff9f0a', icon: ' Umbrella' },
+  insurance: { label: 'Insurance', color: '#ff9f0a', icon: 'Umbrella' },
   fd: { label: 'Tax FD', color: '#5ac8fa', icon: 'Landmark' },
   other: { label: 'Other', color: '#8e8e93', icon: 'FileText' },
 };
