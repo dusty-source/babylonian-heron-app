@@ -76,3 +76,17 @@ export const getBurnStatusColor = (status: string) => {
     default: return '#8e8e93';
   }
 };
+
+// ─── Phase 3: Tax Shield Helpers ─────────────────────────────
+
+export const TAX_CATEGORIES: Record<string, { label: string; color: string; icon: string }> = {
+  ppf: { label: 'PPF', color: '#30d158', icon: 'Shield' },
+  elss: { label: 'ELSS', color: '#0a84ff', icon: 'TrendingUp' },
+  nps: { label: 'NPS', color: '#bf5af2', icon: 'Briefcase' },
+  sukanya: { label: 'Sukanya', color: '#ff375f', icon: 'Heart' },
+  insurance: { label: 'Insurance', color: '#ff9f0a', icon: ' Umbrella' },
+  fd: { label: 'Tax FD', color: '#5ac8fa', icon: 'Landmark' },
+  other: { label: 'Other', color: '#8e8e93', icon: 'FileText' },
+};
+
+export const getTaxCategoryColor = (cat: string) => TAX_CATEGORIES[cat]?.color || '#8e8e93';
