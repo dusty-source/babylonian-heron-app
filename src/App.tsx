@@ -4,7 +4,7 @@ import {
   Wallet, TrendingUp, TrendingDown, Home, CreditCard, PiggyBank,
   BarChart3, ArrowUpRight, ArrowDownRight, Activity, Plus, Trash2,
   Edit3, Check, RotateCcw, Clock, AlertTriangle, Lock, Settings,
-    Shield, Briefcase, Heart, Umbrella, Landmark, FileText, Sparkles, Target,
+    Shield, Briefcase, Heart, Umbrella, Landmark, FileText, Sparkles, 
   ChevronRight, X, Repeat, Target
 } from 'lucide-react';
 import {
