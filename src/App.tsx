@@ -8,7 +8,7 @@ import {
   ChevronRight, X, Repeat, Target
 } from 'lucide-react';
 import {
-  AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie
+  AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pief
 } from 'recharts';
 import { useBudgetStore } from './store/useBudgetStore';
 import type { TaxEntry, WindfallResult } from './store/useBudgetStore';
@@ -569,7 +569,7 @@ export default function App() {
   }, [currentYear, selectedMonth]);
 
   /* Phase 1: handleAddEntry with cap lock */
-  const handleAddEntry = (section: keyof typeof currentYear) => {
+  const handleAddEntry = (section: keyof  YearData) => {
     if (!newEntryName.trim()) return;
     if (section === 'householdExpenses' && selectedMonthCap?.isCapReached && !capOverride) {
       setShowCapToast(true);
