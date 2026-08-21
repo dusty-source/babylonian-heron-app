@@ -402,7 +402,142 @@ export function useBudgetStore() {
     const status = usedPct >= 100 ? 'BROKEN' : usedPct >= 85 ? 'DISASTER IN MAKING' : usedPct >= 60 ? 'WATCH OUT' : usedPct >= 30 ? 'ON TRACK' : 'BRAVO!';
     return { spent, cap, remaining, dailyVelocity, daysUntilExhaustion, daysRemaining, dailyAllowance, usedPct, isCapReached: spent >= cap, status };
   }, [state.activeYear, currentYear]);
+  
+  // ─── Phase 3: Tax Shield ────────────────────────────────────
 
+  const addTaxEntry = useCallback((name: string, category: TaxEntry['category'], limit: number) => {
+    setState(prev => {
+      const y = prev.years[prev.activeYear];
+      if (!y) return prev;
+      const entries = [...y.taxShieldEntries];
+      const id = `tax-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+      const ts = now();
+      entries.push({ id, name, category, values: new Array(12).fill(0), limit, createdAt: ts, modifiedAt: ts });
+      const updated = { ...y, taxShieldEntries: entries, modifiedAt: ts };
+      const newState = { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
+      const auditY = newState.years[newState.activeYear];
+      auditY.auditLog = [{ id: `audit-${Date.now()}`, action: 'add', section: 'taxShield', entryName: name, timestamp: ts }, ...auditY.auditLog].slice(0, 100);
+      return newState;
+    });
+  }, []);
+
+  const updateTaxEntryValue = useCallback((entryId: string, monthIndex: number, value: number) => {
+    setState(prev => {
+      const y = prev.years[prev.activeYear];
+      if (!y) return prev;
+      const entries = [...y.taxShieldEntries];
+      const idx = entries.findIndex(e => e.id === entryId);
+      if (idx === -1) return prev;
+      const entry = { ...entries[idx], values: [...entries[idx].values], modifiedAt: now() };
+      entry.values[monthIndex] = value;
+      entries[idx] = entry;
+      const updated = { ...y, taxShieldEntries: entries, modifiedAt: now() };
+      return { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
+    });
+  }, []);
+
+  const deleteTaxEntry = useCallback((entryId: string) => {
+    setState(prev => {
+      const y = prev.years[prev.activeYear];
+      if (!y) return prev;
+      const filtered = y.taxShieldEntries.filter(e => e.id !== entryId);
+      const updated = { ...y, taxShieldEntries: filtered, modifiedAt: now() };
+      return { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
+    });
+  }, []);
+
+  const getTaxShieldStatus = useCallback((monthIndex: number): TaxShieldStatus => {
+    const y = currentYear;
+    if (!y) return { filled: 0, gap: 150000, limit: 150000, pct: 0, monthlySipNeeded: 0, monthsRemaining: 0, entries: [] };
+    const limit = 150000;
+    const entries = y.taxShieldEntries.map(e => ({ name: e.name, value: e.values[monthIndex] || 0, category: e.category }));
+    const filled = Math.min(limit, entries.reduce((s, e) => s + e.value, 0));
+    const gap = Math.max(0, limit - filled);
+    const pct = Math.min(100, (filled / limit) * 100);
+    const monthsRemaining = 12 - monthIndex;
+    const monthlySipNeeded = monthsRemaining > 0 ? Math.ceil(gap / monthsRemaining) : 0;
+    return { filled, gap, limit, pct, monthlySipNeeded, monthsRemaining, entries };
+  }, [currentYear]);
+
+  // ─── Phase 3: Windfall Allocator ────────────────────────────
+
+  const detectWindfall = useCallback((monthIndex: number): WindfallResult | null => {
+    const y = currentYear;
+    if (!y) return null;
+    const totalIncome = y.incomeEntries.reduce((s, e) => s + (e.values[monthIndex] || 0), 0);
+    if (totalIncome <= 0) return null;
+    // Calculate baseline from average of previous 3 months with data
+    let baseline = y.windfallBaseline;
+    if (baseline <= 0) {
+      let sum = 0, count = 0;
+      for (let i = monthIndex - 1; i >= 0 && count < 3; i--) {
+        const mIncome = y.incomeEntries.reduce((s, e) => s + (e.values[i] || 0), 0);
+        if (mIncome > 0) { sum += mIncome; count++; }
+      }
+      baseline = count > 0 ? Math.round(sum / count) : totalIncome;
+    }
+    const extra = totalIncome - baseline;
+    if (extra <= 0) return null;
+    return {
+      extraIncome: extra,
+      toSavings: Math.round(extra * 0.10),
+      toHousehold: Math.round(extra * 0.70),
+      toDebt: Math.round(extra * 0.20),
+      monthIndex,
+    };
+  }, [currentYear]);
+
+  const applyWindfall = useCallback((result: WindfallResult) => {
+    setState(prev => {
+      const y = prev.years[prev.activeYear];
+      if (!y) return prev;
+      const { monthIndex, toSavings, toHousehold, toDebt } = result;
+      // Add to savings
+      const savings = [...y.savingsData];
+      const sIdx = savings.findIndex(e => e.id === 'windfall-savings');
+      if (sIdx >= 0) {
+        const entry = { ...savings[sIdx], values: [...savings[sIdx].values] };
+        entry.values[monthIndex] += toSavings;
+        savings[sIdx] = entry;
+      } else {
+        savings.push({ id: 'windfall-savings', name: 'WINDFALL SAVINGS', values: Array(12).fill(0).map((_, i) => i === monthIndex ? toSavings : 0), recurring: 'none', createdAt: now(), modifiedAt: now() });
+      }
+      // Add to household buffer (as a buffer entry)
+      const household = [...y.householdExpenses];
+      const hIdx = household.findIndex(e => e.id === 'windfall-buffer');
+      if (hIdx >= 0) {
+        const entry = { ...household[hIdx], values: [...household[hIdx].values] };
+        entry.values[monthIndex] += toHousehold;
+        household[hIdx] = entry;
+      } else {
+        household.push({ id: 'windfall-buffer', name: 'WINDFALL BUFFER', values: Array(12).fill(0).map((_, i) => i === monthIndex ? toHousehold : 0), recurring: 'none', createdAt: now(), modifiedAt: now() });
+      }
+      // Add to debt repayment
+      const debt = [...y.debtRepayment];
+      const dIdx = debt.findIndex(e => e.id === 'windfall-debt');
+      if (dIdx >= 0) {
+        const entry = { ...debt[dIdx], values: [...debt[dIdx].values] };
+        entry.values[monthIndex] += toDebt;
+        debt[dIdx] = entry;
+      } else {
+        debt.push({ id: 'windfall-debt', name: 'WINDFALL DEBT KNOCKOUT', values: Array(12).fill(0).map((_, i) => i === monthIndex ? toDebt : 0), recurring: 'none', createdAt: now(), modifiedAt: now() });
+      }
+      const updated = { ...y, savingsData: savings, householdExpenses: household, debtRepayment: debt, modifiedAt: now() };
+      const newState = { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
+      const auditY = newState.years[newState.activeYear];
+      auditY.auditLog = [{ id: `audit-${Date.now()}`, action: 'add', section: 'windfall', entryName: `Windfall Allocation`, newValue: `S:${toSavings} H:${toHousehold} D:${toDebt}`, timestamp: now() }, ...auditY.auditLog].slice(0, 100);
+      return newState;
+    });
+  }, []);
+
+  const setWindfallBaseline = useCallback((baseline: number) => {
+    setState(prev => {
+      const y = prev.years[prev.activeYear];
+      if (!y) return prev;
+      return { ...prev, years: { ...prev.years, [prev.activeYear]: { ...y, windfallBaseline: baseline, modifiedAt: now() } } };
+    });
+  }, []);
+  
   const getIncomeTotal = useCallback((monthIndex: number) => getTotal('incomeEntries', monthIndex), [getTotal]);
   const getOutgoingTotal = useCallback((monthIndex: number) => getTotal('outgoingEntries', monthIndex), [getTotal]);
   const getAllocationTotal = useCallback((monthIndex: number) => getTotal('allocationEntries', monthIndex), [getTotal]);
@@ -431,5 +566,13 @@ export function useBudgetStore() {
     getHouseholdTotal,
     getDebtRepaymentTotal,
     getSavingsTotal,
+    // Phase 3
+    addTaxEntry,
+    updateTaxEntryValue,
+    deleteTaxEntry,
+    getTaxShieldStatus,
+    detectWindfall,
+    applyWindfall,
+    setWindfallBaseline,
   };
 }
