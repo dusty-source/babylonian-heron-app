@@ -16,7 +16,7 @@ import { formatCurrency, getStatusColor, getRemarkColor, getBurnRingColor, getBu
 import type { BurnRate } from './data/budgetData';
 
 type Tab = 'overview' | 'details' | 'debt' | 'tax' | 'audit';
-type EditSection = 'income' | 'household' | 'debt-repay' | 'savings' | 'debt-prog' | null;
+type EditSection = 'income' | 'household' | 'debt-repay' | 'savings' | 'debt-prog' | 'tax' | null;
 type PasscodeMode = 'set' | 'verify' | null;
 type RecurringFreq = 'none' | 'monthly' | 'quarterly' | 'annual';
 
