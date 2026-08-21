@@ -4,6 +4,7 @@ import {
   Wallet, TrendingUp, TrendingDown, Home, CreditCard, PiggyBank,
   BarChart3, ArrowUpRight, ArrowDownRight, Activity, Plus, Trash2,
   Edit3, Check, RotateCcw, Clock, AlertTriangle, Lock, Settings,
+    Shield, Briefcase, Heart, Umbrella, Landmark, FileText, Sparkles, Target,
   ChevronRight, X, Repeat, Target
 } from 'lucide-react';
 import {
@@ -13,7 +14,7 @@ import { useBudgetStore } from './store/useBudgetStore';
 import { formatCurrency, getStatusColor, getRemarkColor, getBurnRingColor, getBurnStatusColor } from './data/budgetData';
 import type { BurnRate } from './data/budgetData';
 
-type Tab = 'overview' | 'details' | 'debt' | 'audit';
+type Tab = 'overview' | 'details' | 'debt' | 'tax' | 'audit';
 type EditSection = 'income' | 'household' | 'debt-repay' | 'savings' | 'debt-prog' | null;
 type PasscodeMode = 'set' | 'verify' | null;
 type RecurringFreq = 'none' | 'monthly' | 'quarterly' | 'annual';
@@ -426,6 +427,47 @@ function DebtSimulatorCard({ store }: { store: ReturnType<typeof useBudgetStore>
   );
 }
 
+/* ─── Phase 3: Windfall Modal ─────────────────────────────── */
+
+function WindfallModal({ data, onApply, onClose }: { data: WindfallResult; onApply: () => void; onClose: () => void }) {
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-5">
+      <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+        className="glass-card rounded-2xl p-5 w-full max-w-xs ios-shadow border border-ios-yellow/20">
+        <div className="w-12 h-12 rounded-2xl bg-ios-yellow/20 flex items-center justify-center mx-auto mb-3">
+          <Sparkles size={24} className="text-ios-yellow" />
+        </div>
+        <h3 className="text-base font-bold text-ios-text text-center mb-1">Windfall Detected!</h3>
+        <p className="text-[11px] text-ios-text-secondary text-center mb-4">
+          Extra income of {formatCurrency(data.extraIncome)} detected. Heron suggests:
+        </p>
+        <div className="space-y-2 mb-4">
+          <div className="flex items-center justify-between py-2 px-3 rounded-xl bg-ios-green/10 border border-ios-green/20">
+            <span className="text-xs text-ios-green font-medium">10% Savings</span>
+            <span className="text-sm font-bold text-ios-green tabular-nums">{formatCurrency(data.toSavings)}</span>
+          </div>
+          <div className="flex items-center justify-between py-2 px-3 rounded-xl bg-ios-blue/10 border border-ios-blue/20">
+            <span className="text-xs text-ios-blue font-medium">70% Household Buffer</span>
+            <span className="text-sm font-bold text-ios-blue tabular-nums">{formatCurrency(data.toHousehold)}</span>
+          </div>
+          <div className="flex items-center justify-between py-2 px-3 rounded-xl bg-ios-purple/10 border border-ios-purple/20">
+            <span className="text-xs text-ios-purple font-medium">20% Debt Knockout</span>
+            <span className="text-sm font-bold text-ios-purple tabular-nums">{formatCurrency(data.toDebt)}</span>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => { sessionStorage.setItem(`windfall-${state.activeYear}-${data.monthIndex}`, '1'); onClose(); }}
+            className="flex-1 py-2.5 rounded-xl bg-ios-surface-2 text-xs font-medium text-ios-text-secondary">Dismiss</button>
+          <button onClick={() => { onApply(); onClose(); }}
+            className="flex-1 py-2.5 rounded-xl bg-ios-yellow/20 text-xs font-bold text-ios-yellow">Apply</button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+
 /* ─── Main App ────────────────────────────────────────────── */
 
 export default function App() {
@@ -438,6 +480,14 @@ export default function App() {
   const [newYearVal, setNewYearVal] = useState('');
   const [showYearMenu, setShowYearMenu] = useState(false);
 
+    /* Phase 3 state */
+  const [showWindfall, setShowWindfall] = useState(false);
+  const [windfallData, setWindfallData] = useState<WindfallResult | null>(null);
+  const [showTaxAdd, setShowTaxAdd] = useState(false);
+  const [newTaxName, setNewTaxName] = useState('');
+  const [newTaxCategory, setNewTaxCategory] = useState<TaxEntry['category']>('other');
+  const [newTaxLimit, setNewTaxLimit] = useState('150000');
+  
   /* Phase 1 state */
   const [passcodeMode, setPasscodeMode] = useState<PasscodeMode>(null);
   const [capOverride, setCapOverride] = useState(false);
@@ -449,7 +499,9 @@ export default function App() {
     setActiveYear, addYear, deleteYear, resetToDefaults,
     autoAllocate, setPasscode, verifyPasscode, getBurnRate,
     getIncomeTotal, getOutgoingTotal, getAllocationTotal, getHouseholdTotal, getDebtRepaymentTotal,
-    toggleRecurring, applyRecurringAutopilot, getCommittedRecurring, getTrueDisposable } = store;
+    toggleRecurring, applyRecurringAutopilot, getCommittedRecurring, getTrueDisposable,
+            addTaxEntry, updateTaxEntryValue, deleteTaxEntry,
+    getTaxShieldStatus, detectWindfall, applyWindfall, setWindfallBaseline } = store;
 
   const months = currentYear?.months || [];
   const currentMonth = months[selectedMonth] || '';
@@ -479,6 +531,19 @@ export default function App() {
     setCapOverride(false);
   }, [selectedMonth, state.activeYear]);
 
+  /* Phase 3: windfall detection */
+  useEffect(() => {
+    const wf = detectWindfall(selectedMonth);
+    if (wf && wf.extraIncome > 5000) {
+      setWindfallData(wf);
+      // Auto-show only once per month session — user can dismiss
+      const dismissed = sessionStorage.getItem(`windfall-${state.activeYear}-${selectedMonth}`);
+      if (!dismissed) setShowWindfall(true);
+    } else {
+      setWindfallData(null);
+    }
+  }, [selectedMonth, state.activeYear, detectWindfall]);
+  
   const grandIncoming = useMemo(() => months.reduce((s, _, i) => s + getIncomeTotal(i), 0), [months, getIncomeTotal]);
   const grandOutgoing = useMemo(() => months.reduce((s, _, i) => s + getOutgoingTotal(i), 0), [months, getOutgoingTotal]);
   const grandDebtPaid = useMemo(() => currentYear?.debtRepayment.reduce((s, e) => s + e.values.reduce((a, b) => a + b, 0), 0) || 0, [currentYear]);
@@ -701,6 +766,17 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Phase 3: Windfall Modal */}
+      <AnimatePresence>
+        {showWindfall && windfallData && (
+          <WindfallModal
+            data={windfallData}
+            onApply={() => applyWindfall(windfallData)}
+            onClose={() => setShowWindfall(false)}
+          />
+        )}
+      </AnimatePresence>
+      
       {/* Phase 1: Cap Block Toast */}
       <div className={`cap-toast ${showCapToast ? 'active' : ''}`}>
         <Lock size={14} className="inline mr-1" /> 70% Cap Reached — Passcode Required
@@ -732,7 +808,7 @@ export default function App() {
       {/* Tab Bar */}
       <div className="px-4 mb-3">
         <div className="flex bg-ios-surface-2 rounded-xl p-1">
-          {(['overview', 'details', 'debt', 'audit'] as Tab[]).map(tab => (
+          {(['overview', 'details', 'debt', 'tax', 'audit'] as Tab[]).map(tab => (
             <motion.button key={tab} whileTap={{ scale: 0.95 }} onClick={() => setActiveTab(tab)}
               className={`flex-1 py-2 rounded-lg text-[10px] font-semibold capitalize transition-all ${
                 activeTab === tab ? 'bg-ios-surface text-ios-text ios-shadow-sm' : 'text-ios-text-secondary'
@@ -1053,6 +1129,126 @@ export default function App() {
               </div>
             </motion.div>
           )}
+
+          {activeTab === 'tax' && (
+            <motion.div key="tax" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3">
+              {/* 80C Progress Ring */}
+              {(() => {
+                const tax = getTaxShieldStatus(selectedMonth);
+                const radius = 36;
+                const circumference = 2 * Math.PI * radius;
+                const offset = circumference - (tax.pct / 100) * circumference;
+                return (
+                  <div className="glass-card rounded-2xl p-4 ios-shadow">
+                    <div className="flex items-center gap-4">
+                      <div className="relative w-20 h-20 flex-shrink-0">
+                        <svg viewBox="0 0 84 84" className="w-20 h-20 -rotate-90">
+                          <circle cx="42" cy="42" r={radius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="8" />
+                          <circle cx="42" cy="42" r={radius} fill="none" stroke={tax.pct >= 100 ? '#30d158' : tax.pct >= 70 ? '#0a84ff' : '#ff9f0a'}
+                            strokeWidth="8" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} />
+                        </svg>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                          <span className="text-sm font-bold text-ios-text">{Math.round(tax.pct)}%</span>
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-ios-text-secondary mb-0.5">Section 80C Limit</div>
+                        <div className="text-lg font-bold text-ios-text tabular-nums">{formatCurrency(tax.filled)} <span className="text-xs font-normal text-ios-text-secondary">/ {formatCurrency(tax.limit)}</span></div>
+                        <div className="text-[10px] mt-1">
+                          {tax.pct >= 100 ? (
+                            <span className="text-ios-green font-semibold">Limit Filled! Well done.</span>
+                          ) : (
+                            <span className="text-ios-text-secondary">Gap: <span className="text-ios-orange font-semibold">{formatCurrency(tax.gap)}</span> · SIP: {formatCurrency(tax.monthlySipNeeded)}/mo</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Tax Entries */}
+              <div className="glass-card rounded-2xl p-4 ios-shadow">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-semibold text-ios-text">Tax Investments</span>
+                  <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowTaxAdd(true)}
+                    className="w-7 h-7 rounded-lg bg-ios-green/20 flex items-center justify-center text-ios-green">
+                    <Plus size={14} />
+                  </motion.button>
+                </div>
+                <div className="space-y-2">
+                  {currentYear.taxShieldEntries.map(entry => {
+                    const val = entry.values[selectedMonth] || 0;
+                    const catColor = getTaxCategoryColor(entry.category);
+                    return (
+                      <div key={entry.id} className="flex items-center gap-3 py-2 border-b border-ios-border/20 last:border-0">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${catColor}18`, color: catColor }}>
+                          <Target size={14} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-center mb-0.5">
+                            <span className="text-xs text-ios-text-secondary truncate">{entry.name}</span>
+                            <span className="text-xs font-semibold text-ios-text tabular-nums">{formatCurrency(val)}</span>
+                          </div>
+                          <div className="w-full h-1 bg-ios-surface-2 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, (val / entry.limit) * 100)}%`, background: catColor }} />
+                          </div>
+                        </div>
+                        {editSection === 'tax' && (
+                          <>
+                            <input type="number" value={val} onChange={e => updateTaxEntryValue(entry.id, selectedMonth, Number(e.target.value))}
+                              className="w-20 bg-ios-surface-2 rounded-lg px-2 py-1 text-xs text-ios-text text-right border border-ios-border/30 outline-none tabular-nums" />
+                            <motion.button whileTap={{ scale: 0.8 }} onClick={() => deleteTaxEntry(entry.id)}
+                              className="w-6 h-6 rounded-lg bg-ios-red/20 flex items-center justify-center text-ios-red">
+                              <Trash2 size={12} />
+                            </motion.button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <motion.button whileTap={{ scale: 0.95 }} onClick={() => setEditSection(editSection === 'tax' ? null : 'tax')}
+                  className={`w-full mt-3 py-2 rounded-xl text-xs font-semibold transition-all ${editSection === 'tax' ? 'bg-ios-blue/20 text-ios-blue' : 'bg-ios-surface-2 text-ios-text-secondary'}`}>
+                  {editSection === 'tax' ? 'Done Editing' : 'Edit Entries'}
+                </motion.button>
+              </div>
+
+              {/* Tax Add Modal */}
+              <AnimatePresence>
+                {showTaxAdd && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-6">
+                    <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+                      className="glass-card rounded-2xl p-5 w-full max-w-xs ios-shadow">
+                      <h3 className="text-sm font-semibold text-ios-text mb-3">Add Tax Investment</h3>
+                      <input value={newTaxName} onChange={e => setNewTaxName(e.target.value)} placeholder="Name (e.g. PPF Account 2)"
+                        className="w-full bg-ios-surface-2 rounded-xl px-3 py-2 text-sm text-ios-text border border-ios-border/30 focus:border-ios-blue outline-none mb-2" />
+                      <select value={newTaxCategory} onChange={e => setNewTaxCategory(e.target.value as TaxEntry['category'])}
+                        className="w-full bg-ios-surface-2 rounded-xl px-3 py-2 text-sm text-ios-text border border-ios-border/30 focus:border-ios-blue outline-none mb-2">
+                        <option value="ppf">PPF</option>
+                        <option value="elss">ELSS</option>
+                        <option value="nps">NPS</option>
+                        <option value="sukanya">Sukanya</option>
+                        <option value="insurance">Insurance</option>
+                        <option value="fd">Tax Saver FD</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <input type="number" value={newTaxLimit} onChange={e => setNewTaxLimit(e.target.value)} placeholder="Annual Limit"
+                        className="w-full bg-ios-surface-2 rounded-xl px-3 py-2 text-sm text-ios-text border border-ios-border/30 focus:border-ios-blue outline-none mb-3" />
+                      <div className="flex gap-2">
+                        <button onClick={() => setShowTaxAdd(false)}
+                          className="flex-1 py-2 rounded-xl bg-ios-surface-2 text-xs font-medium text-ios-text-secondary">Cancel</button>
+                        <button onClick={() => { if (newTaxName.trim()) { addTaxEntry(newTaxName.trim(), newTaxCategory, Number(newTaxLimit) || 150000); setNewTaxName(''); setNewTaxLimit('150000'); setShowTaxAdd(false); } }}
+                          className="flex-1 py-2 rounded-xl bg-ios-green/20 text-xs font-medium text-ios-green">Add</button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          )}
+          
         </AnimatePresence>
       </div>
 
@@ -1063,6 +1259,7 @@ export default function App() {
             { id: 'overview' as Tab, icon: <BarChart3 size={20} />, label: 'Overview' },
             { id: 'details' as Tab, icon: <Activity size={20} />, label: 'Details' },
             { id: 'debt' as Tab, icon: <CreditCard size={20} />, label: 'Debt' },
+            { id: 'tax' as Tab, icon: <Shield size={20} />, label: 'Tax' },     
             { id: 'audit' as Tab, icon: <Clock size={20} />, label: 'Activity' },
           ].map(tab => (
             <motion.button key={tab.id} whileTap={{ scale: 0.9 }} onClick={() => setActiveTab(tab.id)} className="flex flex-col items-center gap-1">
