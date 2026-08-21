@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wallet, TrendingUp, TrendingDown, Home, CreditCard, PiggyBank,
   BarChart3, ArrowUpRight, ArrowDownRight, Activity, Plus, Trash2,
-  Edit3, Check, RotateCcw, Clock, AlertTriangle, Lock, Unlock,
-  Flame, Zap, Settings, ChevronRight, X
+  Edit3, Check, RotateCcw, Clock, AlertTriangle, Lock, Settings,
+  ChevronRight, X, Repeat, Target
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie
@@ -16,6 +16,7 @@ import type { BurnRate } from './data/budgetData';
 type Tab = 'overview' | 'details' | 'debt' | 'audit';
 type EditSection = 'income' | 'household' | 'debt-repay' | 'savings' | 'debt-prog' | null;
 type PasscodeMode = 'set' | 'verify' | null;
+type RecurringFreq = 'none' | 'monthly' | 'quarterly' | 'annual';
 
 /* ─── Reusable Components ─────────────────────────────────── */
 
@@ -62,12 +63,23 @@ function StatusBadge({ text }: { text: string }) {
   return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `${color}18`, color }}>{text}</span>;
 }
 
+function RecurringBadge({ freq }: { freq?: RecurringFreq }) {
+  if (!freq || freq === 'none') return null;
+  const colors = { monthly: '#30d158', quarterly: '#0a84ff', annual: '#bf5af2' };
+  const labels = { monthly: 'M', quarterly: 'Q', annual: 'A' };
+  return (
+    <span className="recurring-badge" style={{ background: `${colors[freq]}22`, color: colors[freq] }}>
+      <Repeat size={8} className="mr-0.5 inline" />{labels[freq]}
+    </span>
+  );
+}
+
 function EditableRow({
-  name, value, onChange, onNameChange, onDelete, isEditing
+  name, value, onChange, onNameChange, onDelete, isEditing, recurring, onRecurringChange
 }: {
   name: string; value: number; onChange: (v: number) => void;
   onNameChange?: (n: string) => void; onDelete?: () => void;
-  isEditing: boolean;
+  isEditing: boolean; recurring?: RecurringFreq; onRecurringChange?: (f: RecurringFreq) => void;
 }) {
   const [localVal, setLocalVal] = useState(String(value));
   const [localName, setLocalName] = useState(name);
@@ -75,21 +87,34 @@ function EditableRow({
   if (!isEditing) {
     return (
       <div className="flex items-center justify-between py-1.5">
-        <span className="text-xs text-ios-text-secondary">{name}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-ios-text-secondary">{name}</span>
+          <RecurringBadge freq={recurring} />
+        </div>
         <span className="text-xs font-semibold text-ios-text tabular-nums">{formatCurrency(value)}</span>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-2 py-1">
+    <div className="flex items-center gap-2 py-1 flex-wrap">
       {onNameChange && (
         <input value={localName} onChange={e => setLocalName(e.target.value)} onBlur={() => onNameChange(localName)}
           className="flex-1 min-w-0 bg-ios-surface-2 rounded-lg px-2 py-1 text-xs text-ios-text border border-ios-border/30 focus:border-ios-blue outline-none" />
       )}
       {!onNameChange && <span className="flex-1 text-xs text-ios-text-secondary truncate">{name}</span>}
       <input type="number" value={localVal} onChange={e => setLocalVal(e.target.value)} onBlur={() => onChange(Number(localVal) || 0)}
-        className="w-24 bg-ios-surface-2 rounded-lg px-2 py-1 text-xs text-ios-text text-right border border-ios-border/30 focus:border-ios-blue outline-none tabular-nums" />
+        className="w-20 bg-ios-surface-2 rounded-lg px-2 py-1 text-xs text-ios-text text-right border border-ios-border/30 focus:border-ios-blue outline-none tabular-nums" />
+      {onRecurringChange && (
+        <div className="flex gap-0.5">
+          {(['none','monthly','quarterly','annual'] as RecurringFreq[]).map(f => (
+            <button key={f} onClick={() => onRecurringChange(f)}
+              className={`px-1.5 py-0.5 rounded text-[9px] font-medium uppercase transition-all ${recurring === f ? 'bg-ios-blue text-white' : 'bg-ios-surface-2 text-ios-text-secondary'}`}>
+              {f === 'none' ? '×' : f[0]}
+            </button>
+          ))}
+        </div>
+      )}
       {onDelete && (
         <motion.button whileTap={{ scale: 0.8 }} onClick={onDelete} className="w-6 h-6 rounded-lg bg-ios-red/20 flex items-center justify-center text-ios-red">
           <Trash2 size={12} />
@@ -230,7 +255,6 @@ function PasscodeModal({ mode, onVerify, onSet, onClose }: {
   };
 
   const handleBackspace = () => setInput(prev => prev.slice(0, -1));
-
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
 
   return (
@@ -271,6 +295,137 @@ function PasscodeModal({ mode, onVerify, onSet, onClose }: {
   );
 }
 
+/* ─── Phase 2: DebtSimulatorCard ──────────────────────────── */
+
+function DebtSimulatorCard({ store }: { store: ReturnType<typeof useBudgetStore> }) {
+  const [strategy, setStrategy] = useState<'snowball' | 'avalanche'>('avalanche');
+  const [extraMonthly, setExtraMonthly] = useState(5000);
+  const [selectedDebtExtra, setSelectedDebtExtra] = useState<string>('vehicle');
+
+  const { currentYear, getCurrentDebtBalance, getDebtMonthsRemaining, calculateDebtPayoff, calculateExtraPaymentImpact, updateDebtMeta } = store;
+
+  const payoff = useMemo(() => calculateDebtPayoff(strategy, extraMonthly), [calculateDebtPayoff, strategy, extraMonthly]);
+  const extraImpact = useMemo(() => calculateExtraPaymentImpact(selectedDebtExtra, extraMonthly), [calculateExtraPaymentImpact, selectedDebtExtra, extraMonthly]);
+
+  if (!currentYear) return null;
+
+  return (
+    <div className="space-y-3">
+      {currentYear.debtMeta.map(meta => {
+        const balance = getCurrentDebtBalance(meta.debtId);
+        const monthsLeft = getDebtMonthsRemaining(meta.debtId);
+        const progress = meta.originalPrincipal > 0 ? ((meta.originalPrincipal - balance) / meta.originalPrincipal) * 100 : 0;
+        return (
+          <motion.div key={meta.debtId} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card rounded-2xl p-4 ios-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-ios-blue/20 text-ios-blue"><CreditCard size={14} /></div>
+                <span className="text-xs font-semibold text-ios-text">{meta.name}</span>
+              </div>
+              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-ios-surface-2 text-ios-text-secondary">{monthsLeft} payments left</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div>
+                <div className="text-[10px] text-ios-text-secondary">Balance</div>
+                <div className="text-xs font-semibold text-ios-text tabular-nums">{formatCurrency(Math.round(balance))}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-ios-text-secondary">EMI</div>
+                <div className="text-xs font-semibold text-ios-text tabular-nums">{formatCurrency(meta.emiAmount)}</div>
+              </div>
+            </div>
+            <div className="mb-2">
+              <div className="flex justify-between text-[10px] mb-1">
+                <span className="text-ios-text-secondary">Paid off</span>
+                <span className="text-ios-green font-medium">{Math.round(progress)}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-ios-surface-2 rounded-full overflow-hidden">
+                <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.8 }} className="h-full rounded-full bg-ios-blue" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-ios-text-secondary">Rate</span>
+              <input type="number" value={meta.interestRate}
+                onChange={e => updateDebtMeta(meta.debtId, { interestRate: Number(e.target.value) || 0 })}
+                className="w-16 bg-ios-surface-2 rounded-lg px-2 py-1 text-[10px] text-ios-text text-right border border-ios-border/30 focus:border-ios-blue outline-none tabular-nums" />
+              <span className="text-[10px] text-ios-text-secondary">%</span>
+            </div>
+          </motion.div>
+        );
+      })}
+
+      <div className="glass-card rounded-2xl p-4 ios-shadow">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-semibold text-ios-text">Payoff Strategy</span>
+          <div className="flex bg-ios-surface-2 rounded-lg p-0.5">
+            <button onClick={() => setStrategy('snowball')} className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${strategy === 'snowball' ? 'bg-ios-surface text-ios-text' : 'text-ios-text-secondary'}`}>Snowball</button>
+            <button onClick={() => setStrategy('avalanche')} className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${strategy === 'avalanche' ? 'bg-ios-surface text-ios-text' : 'text-ios-text-secondary'}`}>Avalanche</button>
+          </div>
+        </div>
+        {payoff && (
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="text-center p-2 rounded-xl bg-ios-surface-2">
+              <div className="text-[10px] text-ios-text-secondary">Total Months</div>
+              <div className="text-sm font-bold text-ios-text">{payoff.totalMonths}</div>
+            </div>
+            <div className="text-center p-2 rounded-xl bg-ios-surface-2">
+              <div className="text-[10px] text-ios-text-secondary">Interest</div>
+              <div className="text-sm font-bold text-ios-orange">{formatCurrency(payoff.totalInterest)}</div>
+            </div>
+            <div className="text-center p-2 rounded-xl bg-ios-surface-2">
+              <div className="text-[10px] text-ios-text-secondary">Principal</div>
+              <div className="text-sm font-bold text-ios-green">{formatCurrency(payoff.totalPrincipal)}</div>
+            </div>
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-ios-text-secondary">Extra/month</span>
+          <input type="range" min="0" max="50000" step="1000" value={extraMonthly}
+            onChange={e => setExtraMonthly(Number(e.target.value))} className="flex-1 accent-ios-blue" />
+          <span className="text-xs font-semibold text-ios-text w-16 text-right tabular-nums">{formatCurrency(extraMonthly)}</span>
+        </div>
+      </div>
+
+      <div className="glass-card rounded-2xl p-4 ios-shadow">
+        <div className="flex items-center gap-2 mb-3">
+          <Target size={14} className="text-ios-purple" />
+          <span className="text-sm font-semibold text-ios-text">Extra Payment Impact</span>
+        </div>
+        <div className="flex items-center gap-2 mb-3">
+          <select value={selectedDebtExtra} onChange={e => setSelectedDebtExtra(e.target.value)}
+            className="flex-1 bg-ios-surface-2 rounded-lg px-2 py-1.5 text-xs text-ios-text border border-ios-border/30 focus:border-ios-blue outline-none">
+            {currentYear.debtMeta.filter(m => getCurrentDebtBalance(m.debtId) > 0).map(m => (
+              <option key={m.debtId} value={m.debtId}>{m.name}</option>
+            ))}
+          </select>
+        </div>
+        {extraImpact && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-2">
+            <div className="p-3 rounded-xl bg-ios-green/10 border border-ios-green/20">
+              <div className="text-[10px] text-ios-green font-medium mb-1">IMPACT</div>
+              <div className="text-xs text-ios-text leading-relaxed">
+                Pay <span className="font-semibold text-ios-text">{formatCurrency(extraMonthly)}</span> extra on {extraImpact.debtName} EMI →
+                save <span className="font-semibold text-ios-green">{formatCurrency(extraImpact.interestSaved)}</span> interest →
+                debt-free <span className="font-semibold text-ios-green">{extraImpact.monthsSaved}</span> months earlier
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="text-center p-2 rounded-xl bg-ios-surface-2">
+                <div className="text-[10px] text-ios-text-secondary">Current</div>
+                <div className="text-xs font-semibold text-ios-text">{extraImpact.baselineMonths} mo</div>
+              </div>
+              <div className="text-center p-2 rounded-xl bg-ios-surface-2">
+                <div className="text-[10px] text-ios-text-secondary">With Extra</div>
+                <div className="text-xs font-semibold text-ios-green">{extraImpact.newPayoffMonths} mo</div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main App ────────────────────────────────────────────── */
 
 export default function App() {
@@ -293,7 +448,8 @@ export default function App() {
   const { state, currentYear, updateEntryValue, updateEntryName, addEntry, deleteEntry,
     setActiveYear, addYear, deleteYear, resetToDefaults,
     autoAllocate, setPasscode, verifyPasscode, getBurnRate,
-    getIncomeTotal, getOutgoingTotal, getAllocationTotal, getHouseholdTotal, getDebtRepaymentTotal } = store;
+    getIncomeTotal, getOutgoingTotal, getAllocationTotal, getHouseholdTotal, getDebtRepaymentTotal,
+    toggleRecurring, applyRecurringAutopilot, getCommittedRecurring, getTrueDisposable } = store;
 
   const months = currentYear?.months || [];
   const currentMonth = months[selectedMonth] || '';
@@ -303,6 +459,8 @@ export default function App() {
   const allocationTotal = getAllocationTotal(selectedMonth);
   const householdTotal = getHouseholdTotal(selectedMonth);
   const debtRepayTotal = getDebtRepaymentTotal(selectedMonth);
+  const committedRecurring = useMemo(() => getCommittedRecurring(selectedMonth), [getCommittedRecurring, selectedMonth]);
+  const trueDisposable = useMemo(() => getTrueDisposable(selectedMonth), [getTrueDisposable, selectedMonth]);
 
   /* Phase 1: cap check for selected month */
   const selectedMonthCap = useMemo(() => {
@@ -347,21 +505,19 @@ export default function App() {
   /* Phase 1: handleAddEntry with cap lock */
   const handleAddEntry = (section: keyof typeof currentYear) => {
     if (!newEntryName.trim()) return;
-
     if (section === 'householdExpenses' && selectedMonthCap?.isCapReached && !capOverride) {
       setShowCapToast(true);
       setTimeout(() => setShowCapToast(false), 3000);
       setPasscodeMode('verify');
       return;
     }
-
     addEntry(section, newEntryName.trim().toUpperCase());
     setNewEntryName('');
     setCapOverride(false);
   };
 
   const handleAddYear = () => {
-    if (!newYearVal.trim() || !/^\d{4}$/.test(newYearVal)) return;
+    if (!newYearVal.trim() || !/^d{4}$/.test(newYearVal)) return;
     addYear(newYearVal.trim());
     setNewYearVal('');
     setShowAddYear(false);
@@ -400,7 +556,7 @@ export default function App() {
   return (
     <div className="h-full flex flex-col bg-ios-bg gradient-mesh">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="px-5 pt-2 pb-2">
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="px-5 pt-6 pb-2">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold gradient-text">Babylonian Heron</h1>
@@ -425,7 +581,7 @@ export default function App() {
       {/* Year Switcher */}
       <div className="px-4 mb-2">
         <div className="flex items-center gap-2">
-          <div className="flex-1 flex gap-1.5 overflow-x-auto scroll-x pb-1">
+          <div className="flex-1 flex gap-1.5 overflow-x-auto scroll-container pb-1">
             {state.availableYears.map(year => (
               <motion.button key={year} whileTap={{ scale: 0.92 }} onClick={() => { setActiveYear(year); setSelectedMonth(0); }}
                 className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
@@ -561,7 +717,7 @@ export default function App() {
 
       {/* Month Selector */}
       <div className="mb-3">
-        <div className="flex gap-1.5 overflow-x-auto scroll-x pb-2 px-4">
+        <div className="flex gap-1.5 overflow-x-auto scroll-container pb-2 px-4">
           {months.map((m, i) => (
             <motion.button key={m} whileTap={{ scale: 0.92 }} onClick={() => setSelectedMonth(i)}
               className={`px-2.5 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${
@@ -592,9 +748,7 @@ export default function App() {
             <motion.div key="overview" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3">
 
               {/* Phase 1: Burn Rate Card (only for current year) */}
-              {burnRate && (
-                <BurnRateCard burn={burnRate} />
-              )}
+              {burnRate && <BurnRateCard burn={burnRate} />}
 
               <div className="glass-card rounded-2xl p-4 ios-shadow">
                 <div className="flex items-center justify-between mb-3">
@@ -709,12 +863,36 @@ export default function App() {
 
           {activeTab === 'details' && (
             <motion.div key="details" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3">
+              
+              {/* Phase 2: True Disposable Card */}
+              <div className="glass-card rounded-2xl p-4 ios-shadow">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-ios-text">True Disposable</span>
+                  <span className="text-xs font-bold text-ios-blue tabular-nums">{formatCurrency(trueDisposable)}</span>
+                </div>
+                <div className="flex justify-between text-[10px] mb-1">
+                  <span className="text-ios-text-secondary">Committed Recurring</span>
+                  <span className="text-ios-text-secondary tabular-nums">{formatCurrency(committedRecurring)}</span>
+                </div>
+                <ProgressBar value={committedRecurring} max={selectedMonthCap?.cap || 1} color="#bf5af2" />
+                <div className="flex justify-between text-[10px] mt-1">
+                  <span className="text-ios-text-secondary">70% Cap</span>
+                  <span className="text-ios-text-secondary tabular-nums">{formatCurrency(selectedMonthCap?.cap || 0)}</span>
+                </div>
+                <motion.button whileTap={{ scale: 0.95 }} onClick={() => applyRecurringAutopilot(selectedMonth)}
+                  className="w-full mt-3 py-2 rounded-xl bg-ios-purple/20 text-xs font-medium text-ios-purple flex items-center justify-center gap-1.5">
+                  <Repeat size={12} /> Apply Recurring Autopilot
+                </motion.button>
+              </div>
+
               <div className="glass-card rounded-2xl p-4 ios-shadow">
                 <SectionHeader title="Household Expenses" section="household" onAdd={() => handleAddEntry('householdExpenses')} locked={selectedMonthCap?.isCapReached && !capOverride} />
                 <div className="space-y-1">
                   {currentYear.householdExpenses.map(entry => (
                     <EditableRow key={entry.id} name={entry.name} value={entry.values[selectedMonth]}
                       isEditing={editSection === 'household'}
+                      recurring={entry.recurring}
+                      onRecurringChange={f => toggleRecurring('householdExpenses', entry.id, f)}
                       onChange={v => updateEntryValue('householdExpenses', entry.id, selectedMonth, v)}
                       onNameChange={n => updateEntryName('householdExpenses', entry.id, n)}
                       onDelete={() => deleteEntry('householdExpenses', entry.id)} />
@@ -723,7 +901,6 @@ export default function App() {
                     <span className="text-xs font-semibold text-ios-text">Total</span>
                     <span className="text-xs font-bold text-ios-red">{formatCurrency(householdTotal)}</span>
                   </div>
-                  {/* Phase 1: Cap indicator */}
                   {selectedMonthCap && selectedMonthCap.cap > 0 && (
                     <div className="mt-2">
                       <div className="flex justify-between text-[10px] mb-1">
@@ -788,6 +965,8 @@ export default function App() {
 
           {activeTab === 'debt' && (
             <motion.div key="debt" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3">
+              <DebtSimulatorCard store={store} selectedMonth={selectedMonth} />
+
               <div className="glass-card rounded-2xl p-4 ios-shadow">
                 <SectionHeader title="Debt Progression" section="debt-prog" onAdd={() => handleAddEntry('debtProgression')} />
                 <div className="space-y-1">
@@ -851,7 +1030,7 @@ export default function App() {
                     {currentYear.auditLog.slice(0, 50).map(entry => (
                       <div key={entry.id} className="flex items-start gap-2 py-2 border-b border-ios-border/20 last:border-0">
                         <div className="w-6 h-6 rounded-lg bg-ios-surface-2 flex items-center justify-center text-ios-text-secondary mt-0.5">
-                          <History size={12} />
+                          <Clock size={12} />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
