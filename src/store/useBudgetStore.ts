@@ -101,6 +101,22 @@ export interface WindfallResult {
   monthIndex: number;
 }
 
+export interface YearComparison {
+  year: string;
+  totalIncome: number;
+  totalHousehold: number;
+  totalSavings: number;
+  totalDebtPaid: number;
+  incomeGrowthPct: number;
+  expenseCreepPct: number;
+}
+
+export interface InterceptorStatus {
+  shouldBlock: boolean;
+  streak: number;
+  suggestions: { name: string; annualTotal: number; monthlyAvg: number }[];
+}
+
 const STORAGE_KEY = 'babylonian-heron-data-v4';
 const MONTHS_12 = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
 const now = () => new Date().toISOString();
@@ -401,7 +417,6 @@ export function useBudgetStore() {
     return entries.reduce((sum, e) => sum + (e.values[monthIndex] || 0), 0);
   }, [currentYear]);
 
-  // Phase 1: Auto-Allocation
   const autoAllocate = useCallback((monthIndex: number) => {
     setState(prev => {
       const yr = prev.years[prev.activeYear];
@@ -420,11 +435,9 @@ export function useBudgetStore() {
     });
   }, []);
 
-  // Phase 1: Passcode
   const setPasscode = useCallback((passcode: string | null) => { setState(prev => ({ ...prev, passcode })); }, []);
   const verifyPasscode = useCallback((input: string) => state.passcode !== null && state.passcode === input, [state.passcode]);
 
-  // Phase 1: Burn-Rate
   const getBurnRate = useCallback(() => {
     const nowDate = new Date();
     const currentMonthIdx = nowDate.getMonth();
@@ -448,7 +461,6 @@ export function useBudgetStore() {
     return { spent, cap, remaining, dailyVelocity, daysUntilExhaustion, daysRemaining, dailyAllowance, usedPct, isCapReached: spent >= cap, status };
   }, [state.activeYear, currentYear]);
 
-  // Phase 2: Recurring Autopilot
   const toggleRecurring = useCallback((section: keyof YearData, entryId: string, frequency: 'none' | 'monthly' | 'quarterly' | 'annual') => {
     setState(prev => {
       const y = prev.years[prev.activeYear];
@@ -513,7 +525,6 @@ export function useBudgetStore() {
     return Math.max(0, cap - committed);
   }, [currentYear, getCommittedRecurring]);
 
-  // Phase 2: Debt Simulator
   const updateDebtMeta = useCallback((debtId: string, updates: Partial<DebtMeta>) => {
     setState(prev => {
       const y = prev.years[prev.activeYear];
@@ -594,7 +605,6 @@ export function useBudgetStore() {
     while (eBalance > 0.01 && eMonths < 600) { eMonths++; const interest = eBalance * rate; eInterest += interest; eBalance += interest - meta.emiAmount - extraAmount; if (eBalance <= 0) eBalance = 0; }
     return { debtId, debtName: meta.name, monthsSaved: bMonths - eMonths, interestSaved: Math.round(bInterest - eInterest), newPayoffMonths: eMonths, baselineMonths: bMonths };
   }, [currentYear, getCurrentDebtBalance]);
-
   // Phase 3: Tax Shield
   const addTaxEntry = useCallback((name: string, category: TaxEntry['category'], limit: number) => {
     setState(prev => {
@@ -650,7 +660,7 @@ export function useBudgetStore() {
     return { filled, gap, limit, pct, monthlySipNeeded, monthsRemaining, entries };
   }, [currentYear]);
 
-  // Phase 3: Windfall Allocator
+  // Phase 3: Windfall
   const detectWindfall = useCallback((monthIndex: number): WindfallResult | null => {
     const y = currentYear;
     if (!y) return null;
@@ -703,6 +713,89 @@ export function useBudgetStore() {
     });
   }, []);
 
+  // Phase 4: Hand-to-Mouth Interceptor
+  const getDisasterStreak = useCallback((monthIndex: number): number => {
+    const y = currentYear;
+    if (!y) return 0;
+    let streak = 0;
+    for (let i = monthIndex; i >= 0; i--) {
+      if (y.remarks.house70?.[String(i)] === 'DISASTER IN MAKING') streak++;
+      else break;
+    }
+    return streak;
+  }, [currentYear]);
+
+  const getRecoveryStreak = useCallback((monthIndex: number): number => {
+    const y = currentYear;
+    if (!y) return 0;
+    let streak = 0;
+    for (let i = monthIndex; i >= 0; i--) {
+      if (y.remarks.house70?.[String(i)] === 'BRAVO!') streak++;
+      else break;
+    }
+    return streak;
+  }, [currentYear]);
+
+  const getInterceptorStatus = useCallback((monthIndex: number): InterceptorStatus => {
+    const streak = getDisasterStreak(monthIndex);
+    const y = currentYear;
+    const suggestions: { name: string; annualTotal: number; monthlyAvg: number }[] = [];
+    if (y && streak >= 2) {
+      const protectedNames = ['HOUSE RENT', 'SCHOOL FEE', 'SCHOOL TRANSPORT', 'ELECTRICITY', 'INTERNET', 'MILK'];
+      y.householdExpenses.forEach(e => {
+        const total = e.values.reduce((a, b) => a + b, 0);
+        if (total > 5000 && !protectedNames.includes(e.name)) {
+          suggestions.push({ name: e.name, annualTotal: total, monthlyAvg: Math.round(total / 12) });
+        }
+      });
+      suggestions.sort((a, b) => b.annualTotal - a.annualTotal);
+    }
+    return { shouldBlock: streak >= 2, streak, suggestions: suggestions.slice(0, 3) };
+  }, [currentYear, getDisasterStreak]);
+
+  // Phase 4: YOY War Room
+  const getYearComparison = useCallback((): YearComparison[] => {
+    const sorted = Object.keys(state.years).sort();
+    return sorted.map((year, idx) => {
+      const y = state.years[year];
+      const totalIncome = y.incomeEntries.reduce((s, e) => s + e.values.reduce((a, b) => a + b, 0), 0);
+      const totalHousehold = y.householdExpenses.reduce((s, e) => s + e.values.reduce((a, b) => a + b, 0), 0);
+      const totalSavings = y.savingsData.reduce((s, e) => s + e.values.reduce((a, b) => a + b, 0), 0);
+      const totalDebtPaid = y.debtRepayment.reduce((s, e) => s + e.values.reduce((a, b) => a + b, 0), 0);
+      const prev = idx > 0 ? state.years[sorted[idx - 1]] : null;
+      const prevIncome = prev ? prev.incomeEntries.reduce((s, e) => s + e.values.reduce((a, b) => a + b, 0), 0) : 0;
+      const prevHousehold = prev ? prev.householdExpenses.reduce((s, e) => s + e.values.reduce((a, b) => a + b, 0), 0) : 0;
+      return {
+        year,
+        totalIncome,
+        totalHousehold,
+        totalSavings,
+        totalDebtPaid,
+        incomeGrowthPct: prevIncome > 0 ? Math.round(((totalIncome - prevIncome) / prevIncome) * 100) : 0,
+        expenseCreepPct: prevHousehold > 0 ? Math.round(((totalHousehold - prevHousehold) / prevHousehold) * 100) : 0,
+      };
+    });
+  }, [state.years]);
+
+  const getDebtReductionVelocity = useCallback((year: string): number => {
+    const y = state.years[year];
+    if (!y) return 0;
+    let totalPaid = 0;
+    y.debtProgression.forEach(d => {
+      const first = d.values.find(v => v > 0) || 0;
+      const last = [...d.values].reverse().find(v => v > 0) || 0;
+      totalPaid += Math.max(0, first - last);
+    });
+    const monthsWithData = y.debtProgression[0]?.values.filter(v => v > 0).length || 12;
+    return Math.round(totalPaid / Math.max(1, monthsWithData));
+  }, [state.years]);
+
+  const getSavingsAccumulation = useCallback((year: string): number => {
+    const y = state.years[year];
+    if (!y) return 0;
+    return y.savingsData.reduce((s, e) => s + e.values.reduce((a, b) => a + b, 0), 0);
+  }, [state.years]);
+
   const getIncomeTotal = useCallback((monthIndex: number) => getTotal('incomeEntries', monthIndex), [getTotal]);
   const getOutgoingTotal = useCallback((monthIndex: number) => getTotal('outgoingEntries', monthIndex), [getTotal]);
   const getAllocationTotal = useCallback((monthIndex: number) => getTotal('allocationEntries', monthIndex), [getTotal]);
@@ -731,7 +824,6 @@ export function useBudgetStore() {
     getHouseholdTotal,
     getDebtRepaymentTotal,
     getSavingsTotal,
-    // Phase 2
     toggleRecurring,
     applyRecurringAutopilot,
     getCommittedRecurring,
@@ -741,7 +833,6 @@ export function useBudgetStore() {
     getDebtMonthsRemaining,
     calculateDebtPayoff,
     calculateExtraPaymentImpact,
-    // Phase 3
     addTaxEntry,
     updateTaxEntryValue,
     deleteTaxEntry,
@@ -749,5 +840,11 @@ export function useBudgetStore() {
     detectWindfall,
     applyWindfall,
     setWindfallBaseline,
+    getDisasterStreak,
+    getRecoveryStreak,
+    getInterceptorStatus,
+    getYearComparison,
+    getDebtReductionVelocity,
+    getSavingsAccumulation,
   };
 }
