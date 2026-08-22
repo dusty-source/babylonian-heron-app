@@ -4,18 +4,18 @@ import {
   Wallet, TrendingUp, TrendingDown, Home, CreditCard, PiggyBank,
   BarChart3, ArrowUpRight, ArrowDownRight, Activity, Plus, Trash2,
   Edit3, Check, RotateCcw, Clock, AlertTriangle, Lock, Settings,
-    Shield, Briefcase, Heart, Umbrella, Landmark, FileText, Sparkles, 
-  ChevronRight, X, Repeat, Target
+  Shield, Sparkles, ChevronRight, X, Repeat, Target, Swords, AlertOctagon, Zap
 } from 'lucide-react';
 import {
-  AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pief
+  AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie,
+  BarChart, Bar, LineChart, Line
 } from 'recharts';
 import { useBudgetStore } from './store/useBudgetStore';
-import type { TaxEntry, WindfallResult } from './store/useBudgetStore';
+import type { TaxEntry, WindfallResult, InterceptorStatus } from './store/useBudgetStore';
 import { formatCurrency, getStatusColor, getRemarkColor, getBurnRingColor, getBurnStatusColor, getTaxCategoryColor } from './data/budgetData';
 import type { BurnRate } from './data/budgetData';
 
-type Tab = 'overview' | 'details' | 'debt' | 'tax' | 'audit';
+type Tab = 'overview' | 'details' | 'debt' | 'tax' | 'war';
 type EditSection = 'income' | 'household' | 'debt-repay' | 'savings' | 'debt-prog' | 'tax' | null;
 type PasscodeMode = 'set' | 'verify' | null;
 type RecurringFreq = 'none' | 'monthly' | 'quarterly' | 'annual';
@@ -468,6 +468,52 @@ function WindfallModal({ data, activeYear, onApply, onClose }: { data: WindfallR
   );
 }
 
+/* ─── Phase 4: Interceptor Modal ─────────────────────────────── */
+
+function InterceptorModal({ status, onReview, onOverride, onClose }: {
+  status: InterceptorStatus;
+  onReview: () => void;
+  onOverride: () => void;
+  onClose: () => void;
+}) {
+  const totalCut = status.suggestions.reduce((s, g) => s + g.monthlyAvg, 0);
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-5">
+      <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+        className="glass-card rounded-2xl p-5 w-full max-w-xs ios-shadow border border-ios-red/20">
+        <div className="w-12 h-12 rounded-2xl bg-ios-red/20 flex items-center justify-center mx-auto mb-3">
+          <AlertOctagon size={24} className="text-ios-red" />
+        </div>
+        <h3 className="text-base font-bold text-ios-text text-center mb-1">DISASTER STREAK: {status.streak} MONTHS</h3>
+        <p className="text-[11px] text-ios-text-secondary text-center mb-4">
+          Your household budget has been in disaster mode for {status.streak} consecutive months. Action required before adding new expenses.
+        </p>
+        {status.suggestions.length > 0 && (
+          <div className="space-y-2 mb-4">
+            <div className="text-[10px] text-ios-text-secondary font-medium uppercase tracking-wider">Suggested Cuts</div>
+            {status.suggestions.map(s => (
+              <div key={s.name} className="flex justify-between py-2 px-3 rounded-xl bg-ios-surface-2">
+                <span className="text-xs text-ios-text-secondary">{s.name}</span>
+                <span className="text-xs font-semibold text-ios-red">-{formatCurrency(s.monthlyAvg)}/mo</span>
+              </div>
+            ))}
+            <div className="flex justify-between py-2 px-3 rounded-xl bg-ios-red/10 border border-ios-red/20">
+              <span className="text-xs text-ios-red font-medium">Total Monthly Cut</span>
+              <span className="text-xs font-bold text-ios-red">{formatCurrency(totalCut)}/mo</span>
+            </div>
+          </div>
+        )}
+        <div className="space-y-2">
+          <button onClick={() => { onReview(); onClose(); }}
+            className="w-full py-2.5 rounded-xl bg-ios-blue/20 text-xs font-medium text-ios-blue">Review Budget</button>
+          <button onClick={() => { onOverride(); onClose(); }}
+            className="w-full py-2.5 rounded-xl bg-ios-surface-2 text-xs font-medium text-ios-text-secondary">Override & Add Anyway</button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
 
 /* ─── Main App ────────────────────────────────────────────── */
 
@@ -494,6 +540,8 @@ export default function App() {
   const [capOverride, setCapOverride] = useState(false);
   const [showCapToast, setShowCapToast] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showInterceptor, setShowInterceptor] = useState(false);
+  const [interceptorBypass, setInterceptorBypass] = useState(false);
 
   const store = useBudgetStore();
   const { state, currentYear, updateEntryValue, updateEntryName, addEntry, deleteEntry,
@@ -501,8 +549,10 @@ export default function App() {
     autoAllocate, setPasscode, verifyPasscode, getBurnRate,
     getIncomeTotal, getOutgoingTotal, getAllocationTotal, getHouseholdTotal, getDebtRepaymentTotal,
     toggleRecurring, applyRecurringAutopilot, getCommittedRecurring, getTrueDisposable,
-            addTaxEntry, updateTaxEntryValue, deleteTaxEntry,
-    getTaxShieldStatus, detectWindfall, applyWindfall, setWindfallBaseline } = store;
+    addTaxEntry, updateTaxEntryValue, deleteTaxEntry,
+    getTaxShieldStatus, detectWindfall, applyWindfall, setWindfallBaseline,
+    getDisasterStreak, getRecoveryStreak, getInterceptorStatus, getYearComparison,
+    getDebtReductionVelocity, getSavingsAccumulation } = store;
 
   const months = currentYear?.months || [];
   const currentMonth = months[selectedMonth] || '';
@@ -514,7 +564,11 @@ export default function App() {
   const debtRepayTotal = getDebtRepaymentTotal(selectedMonth);
   const committedRecurring = useMemo(() => getCommittedRecurring(selectedMonth), [getCommittedRecurring, selectedMonth]);
   const trueDisposable = useMemo(() => getTrueDisposable(selectedMonth), [getTrueDisposable, selectedMonth]);
-
+  const interceptorStatus = useMemo(() => getInterceptorStatus(selectedMonth), [getInterceptorStatus, selectedMonth]);
+  const disasterStreak = useMemo(() => getDisasterStreak(selectedMonth), [getDisasterStreak, selectedMonth]);
+  const recoveryStreak = useMemo(() => getRecoveryStreak(selectedMonth), [getRecoveryStreak, selectedMonth]);
+  const yearComparison = useMemo(() => getYearComparison(), [getYearComparison]);
+  
   /* Phase 1: cap check for selected month */
   const selectedMonthCap = useMemo(() => {
     if (!currentYear) return null;
@@ -530,6 +584,7 @@ export default function App() {
   /* Reset cap override when month/year changes */
   useEffect(() => {
     setCapOverride(false);
+    setInterceptorBypass(false);
   }, [selectedMonth, state.activeYear]);
 
   /* Phase 3: windfall detection */
@@ -569,8 +624,14 @@ export default function App() {
   }, [currentYear, selectedMonth]);
 
   /* Phase 1: handleAddEntry with cap lock */
-  const handleAddEntry = (section: keyof  YearData) => {
+  const handleAddEntry = (section: keyof YearData) => {
     if (!newEntryName.trim()) return;
+    if (section === 'householdExpenses') {
+      if (interceptorStatus.shouldBlock && !interceptorBypass) {
+        setShowInterceptor(true);
+        return;
+      }
+    }
     if (section === 'householdExpenses' && selectedMonthCap?.isCapReached && !capOverride) {
       setShowCapToast(true);
       setTimeout(() => setShowCapToast(false), 3000);
@@ -580,9 +641,10 @@ export default function App() {
     addEntry(section, newEntryName.trim().toUpperCase());
     setNewEntryName('');
     setCapOverride(false);
+    setInterceptorBypass(false);
   };
 
-  const handleAddYear = () => {
+    const handleAddYear = () => {
     if (!newYearVal.trim() || !/^\d{4}$/.test(newYearVal)) return;
     addYear(newYearVal.trim());
     setNewYearVal('');
@@ -685,6 +747,22 @@ export default function App() {
       {/* Phase 1: Crash Banner */}
       {burnRate && <CrashBanner burn={burnRate} />}
 
+            {/* Phase 4: Disaster / Recovery Streak Banner */}
+      {disasterStreak >= 2 && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+          className="mx-4 mb-3 px-4 py-2.5 rounded-xl bg-ios-red/10 border border-ios-red/20 flex items-center gap-2">
+          <AlertOctagon size={14} className="text-ios-red flex-shrink-0" />
+          <span className="text-[11px] font-semibold text-ios-red">DISASTER STREAK: {disasterStreak} months — Interceptor Active</span>
+        </motion.div>
+      )}
+      {recoveryStreak >= 2 && disasterStreak < 2 && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+          className="mx-4 mb-3 px-4 py-2.5 rounded-xl bg-ios-green/10 border border-ios-green/20 flex items-center gap-2">
+          <Zap size={14} className="text-ios-green flex-shrink-0" />
+          <span className="text-[11px] font-semibold text-ios-green">RECOVERY STREAK: {recoveryStreak} months — BRAVO!</span>
+        </motion.div>
+      )}
+      
       {/* Add Year Modal */}
       <AnimatePresence>
         {showAddYear && (
@@ -775,6 +853,18 @@ export default function App() {
             activeYear={state.activeYear}
             onApply={() => applyWindfall(windfallData)}
             onClose={() => setShowWindfall(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Phase 4: Interceptor Modal */}
+      <AnimatePresence>
+        {showInterceptor && (
+          <InterceptorModal
+            status={interceptorStatus}
+            onReview={() => { setActiveTab('details'); setInterceptorBypass(false); }}
+            onOverride={() => { setInterceptorBypass(true); }}
+            onClose={() => setShowInterceptor(false)}
           />
         )}
       </AnimatePresence>
@@ -1250,6 +1340,113 @@ export default function App() {
               </AnimatePresence>
             </motion.div>
           )}
+          {activeTab === 'war' && (
+            <motion.div key="war" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3">
+              {/* Year Comparison Cards */}
+              {yearComparison.map((yc, i) => (
+                <div key={yc.year} className="glass-card rounded-2xl p-4 ios-shadow">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-bold text-ios-text">{yc.year}</span>
+                    {i > 0 && yc.incomeGrowthPct !== 0 && (
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${yc.incomeGrowthPct > 0 ? 'bg-ios-green/20 text-ios-green' : 'bg-ios-red/20 text-ios-red'}`}>
+                        {yc.incomeGrowthPct > 0 ? '+' : ''}{yc.incomeGrowthPct}% income
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div className="p-2 rounded-xl bg-ios-surface-2">
+                      <div className="text-[10px] text-ios-text-secondary">Income</div>
+                      <div className="text-xs font-bold text-ios-text tabular-nums">{formatCurrency(yc.totalIncome)}</div>
+                    </div>
+                    <div className="p-2 rounded-xl bg-ios-surface-2">
+                      <div className="text-[10px] text-ios-text-secondary">Household</div>
+                      <div className="text-xs font-bold text-ios-text tabular-nums">{formatCurrency(yc.totalHousehold)}</div>
+                    </div>
+                    <div className="p-2 rounded-xl bg-ios-surface-2">
+                      <div className="text-[10px] text-ios-text-secondary">Savings</div>
+                      <div className="text-xs font-bold text-ios-green tabular-nums">{formatCurrency(yc.totalSavings)}</div>
+                    </div>
+                    <div className="p-2 rounded-xl bg-ios-surface-2">
+                      <div className="text-[10px] text-ios-text-secondary">Debt Paid</div>
+                      <div className="text-xs font-bold text-ios-blue tabular-nums">{formatCurrency(yc.totalDebtPaid)}</div>
+                    </div>
+                  </div>
+                  {i > 0 && yc.expenseCreepPct > 10 && (
+                    <div className="p-2 rounded-xl bg-ios-red/10 border border-ios-red/20">
+                      <div className="text-[10px] text-ios-red font-medium">EXPENSE CREEP ALERT</div>
+                      <div className="text-[10px] text-ios-text-secondary">
+                        Household up {yc.expenseCreepPct}% vs {yearComparison[i-1].year}. Inflation was ~6%.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* Income Growth Chart */}
+              <div className="glass-card rounded-2xl p-4 ios-shadow">
+                <span className="text-sm font-semibold text-ios-text block mb-3">Income Growth</span>
+                <div className="h-40">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={yearComparison}>
+                      <XAxis dataKey="year" tick={{fill:'#8e8e93',fontSize:10}} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={{ background: '#1c1c1e', border: '1px solid #38383a', borderRadius: '12px', fontSize: '12px', color: '#fff' }} formatter={(val: unknown) => formatCurrency(val as number)} />
+                      <Bar dataKey="totalIncome" fill="#30d158" radius={[4,4,0,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Debt Reduction Velocity */}
+              <div className="glass-card rounded-2xl p-4 ios-shadow">
+                <span className="text-sm font-semibold text-ios-text block mb-3">Debt Reduction Velocity</span>
+                <div className="space-y-2">
+                  {state.availableYears.map(year => {
+                    const velocity = getDebtReductionVelocity(year);
+                    return (
+                      <div key={year} className="flex items-center justify-between py-1.5 border-b border-ios-border/20 last:border-0">
+                        <span className="text-xs text-ios-text-secondary">{year}</span>
+                        <span className="text-xs font-semibold text-ios-blue tabular-nums">{formatCurrency(velocity)}/mo</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Savings Curve */}
+              <div className="glass-card rounded-2xl p-4 ios-shadow">
+                <span className="text-sm font-semibold text-ios-text block mb-3">Savings Curve</span>
+                <div className="h-40">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={yearComparison.map(yc => ({ year: yc.year, savings: yc.totalSavings }))}>
+                      <XAxis dataKey="year" tick={{fill:'#8e8e93',fontSize:10}} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={{ background: '#1c1c1e', border: '1px solid #38383a', borderRadius: '12px', fontSize: '12px', color: '#fff' }} formatter={(val: unknown) => formatCurrency(val as number)} />
+                      <Line type="monotone" dataKey="savings" stroke="#bf5af2" strokeWidth={2} dot={{fill:'#bf5af2'}} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Streak Summary */}
+              {recoveryStreak > 0 && (
+                <div className="glass-card rounded-2xl p-4 border border-ios-green/20">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Zap size={14} className="text-ios-green" />
+                    <span className="text-xs font-semibold text-ios-green">Recovery Streak: {recoveryStreak} months</span>
+                  </div>
+                  <div className="text-[10px] text-ios-text-secondary">Keep it up! You're back in control.</div>
+                </div>
+              )}
+              {disasterStreak > 0 && (
+                <div className="glass-card rounded-2xl p-4 border border-ios-red/20">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertOctagon size={14} className="text-ios-red" />
+                    <span className="text-xs font-semibold text-ios-red">Disaster Streak: {disasterStreak} months</span>
+                  </div>
+                  <div className="text-[10px] text-ios-text-secondary">Action required. Review your budget.</div>
+                </div>
+              )}
+            </motion.div>
+          )}
           
         </AnimatePresence>
       </div>
@@ -1261,8 +1458,8 @@ export default function App() {
             { id: 'overview' as Tab, icon: <BarChart3 size={20} />, label: 'Overview' },
             { id: 'details' as Tab, icon: <Activity size={20} />, label: 'Details' },
             { id: 'debt' as Tab, icon: <CreditCard size={20} />, label: 'Debt' },
-            { id: 'tax' as Tab, icon: <Shield size={20} />, label: 'Tax' },     
-            { id: 'audit' as Tab, icon: <Clock size={20} />, label: 'Activity' },
+            { id: 'tax' as Tab, icon: <Shield size={20} />, label: 'Tax' },
+            { id: 'war' as Tab, icon: <Swords size={20} />, label: 'War Room' },
           ].map(tab => (
             <motion.button key={tab.id} whileTap={{ scale: 0.9 }} onClick={() => setActiveTab(tab.id)} className="flex flex-col items-center gap-1">
               <div className={activeTab === tab.id ? 'text-ios-blue' : 'text-ios-text-secondary'}>{tab.icon}</div>
