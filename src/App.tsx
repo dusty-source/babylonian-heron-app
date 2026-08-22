@@ -23,7 +23,7 @@ type PasscodeMode = 'set' | 'verify' | null;
 type RecurringFreq = 'none' | 'monthly' | 'quarterly' | 'annual';
 
 /* ─── Reusable Components ─────────────────────────────────── */
-
+const MONTHS_12 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function AnimatedNumber({ value, prefix = '' }: { value: number; prefix?: string }) {
   return (
     <motion.span key={value} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="tabular-nums">
@@ -32,23 +32,24 @@ function AnimatedNumber({ value, prefix = '' }: { value: number; prefix?: string
   );
 }
 
-function SummaryCard({ title, value, icon, color, subtitle, delay }: {
+function SummaryStripCard({ title, value, icon, color, subtitle, delay }: {
   title: string; value: number; icon: React.ReactNode; color: string; subtitle?: string; delay: number;
 }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay, duration: 0.5, type: 'spring' }}
-      className="glass-card rounded-2xl p-4 ios-shadow card-hover">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${color}20`, color }}>{icon}</div>
-          <span className="text-xs text-ios-text-secondary font-medium">{title}</span>
-        </div>
-        {value >= 0 ? <ArrowUpRight size={14} style={{ color }} /> : <ArrowDownRight size={14} style={{ color: '#ff453a' }} />}
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay, duration: 0.4, type: 'spring' }}
+      className="summary-strip-card glass-card rounded-xl p-3 ios-shadow card-hover snap-start"
+    >
+      <div className="flex items-center gap-2 mb-1.5">
+        <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: `${color}20`, color }}>{icon}</div>
+        <span className="text-[10px] text-ios-text-secondary font-medium uppercase tracking-wide">{title}</span>
       </div>
-      <div className="text-xl font-semibold text-ios-text">
+      <div className="text-base font-bold text-ios-text leading-tight">
         <AnimatedNumber value={Math.abs(value)} prefix={value < 0 ? '-' : ''} />
       </div>
-      {subtitle && <div className="text-[10px] text-ios-text-secondary mt-1">{subtitle}</div>}
+      {subtitle && <div className="text-[9px] text-ios-text-secondary mt-0.5">{subtitle}</div>}
     </motion.div>
   );
 }
@@ -136,7 +137,7 @@ function formatTimestamp(iso: string) {
 /* ─── Phase 1: BurnRateCard ───────────────────────────────── */
 
 function BurnRateCard({ burn }: { burn: BurnRate }) {
-  const radius = 30;
+  const radius = 24;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (burn.usedPct / 100) * circumference;
   const color = getBurnRingColor(burn.usedPct);
@@ -146,9 +147,9 @@ function BurnRateCard({ burn }: { burn: BurnRate }) {
       className="glass-card rounded-2xl p-4 ios-shadow">
       <div className="flex items-center gap-3">
         <div className="burn-ring">
-          <svg viewBox="0 0 72 72">
-            <circle className="burn-ring-bg" cx="36" cy="36" r={radius} />
-            <circle className="burn-ring-progress" cx="36" cy="36" r={radius}
+          <svg viewBox="0 0 56 56">
+            <circle className="burn-ring-bg" cx="28" cy="28" r={radius} />
+            <circle className="burn-ring-progress" cx="28" cy="28" r={radius}
               stroke={color} strokeDasharray={circumference} strokeDashoffset={offset} />
           </svg>
           <div className="burn-ring-text" style={{ color }}>{Math.round(burn.usedPct)}%</div>
@@ -212,7 +213,7 @@ function CrashBanner({ burn }: { burn: BurnRate }) {
 
   return (
     <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }}
-      className="crash-banner rounded-xl px-4 py-3 mx-4 mb-3" style={{ background: bg }}>
+      className="crash-banner rounded-xl px-3 py-2.5 mx-4 mb-2" style={{ background: bg }}>
       <div className="flex items-center gap-2">
         <div className="crash-icon-wrap" style={{ color: burn.usedPct >= 85 ? '#ff375f' : '#ff9f0a' }}>{icon}</div>
         <span className="text-[11px] font-semibold leading-tight" style={{ color: burn.usedPct >= 85 ? '#ff375f' : '#ff9f0a' }}>
@@ -1087,18 +1088,18 @@ const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
         <Lock size={14} className="inline mr-1" /> 70% Cap Reached — Passcode Required
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 gap-3 px-4 mb-3">
-        <SummaryCard title="Total In" value={grandIncoming} icon={<TrendingUp size={16} />} color="#30d158" subtitle={state.activeYear} delay={0.1} />
-        <SummaryCard title="Total Out" value={grandOutgoing} icon={<TrendingDown size={16} />} color="#ff453a" subtitle={state.activeYear} delay={0.2} />
-        <SummaryCard title="Debt Paid" value={grandDebtPaid} icon={<CreditCard size={16} />} color="#0a84ff" subtitle="EMI cleared" delay={0.3} />
-        <SummaryCard title="Net Flow" value={grandIncoming - grandOutgoing} icon={<Wallet size={16} />}
-          color={grandIncoming >= grandOutgoing ? '#30d158' : '#ff453a'} subtitle="Overall balance" delay={0.4} />
-      </div>
+    {/* Summary Strip - Horizontal Scroll */}
+    <div className="flex gap-2 overflow-x-auto scroll-x pb-2 px-4 mb-2">
+      <SummaryStripCard title="Total In" value={grandIncoming} icon={<TrendingUp size={14} />} color="#30d158" subtitle={state.activeYear} delay={0.1} />
+      <SummaryStripCard title="Total Out" value={grandOutgoing} icon={<TrendingDown size={14} />} color="#ff453a" subtitle={state.activeYear} delay={0.15} />
+      <SummaryStripCard title="Debt Paid" value={grandDebtPaid} icon={<CreditCard size={14} />} color="#0a84ff" subtitle="EMI cleared" delay={0.2} />
+      <SummaryStripCard title="Net Flow" value={grandIncoming - grandOutgoing} icon={<Wallet size={14} />}
+        color={grandIncoming >= grandOutgoing ? '#30d158' : '#ff453a'} subtitle="Overall balance" delay={0.25} />
+    </div>
 
       {/* Month Selector */}
       <div className="mb-3">
-        <div className="flex gap-1.5 overflow-x-auto scroll-container pb-2 px-4">
+        <div className="flex gap-1.5 overflow-x-auto scroll-x pb-2 px-4">
           {months.map((m, i) => (
             <motion.button key={m} whileTap={{ scale: 0.92 }} onClick={() => setSelectedMonth(i)}
               className={`px-2.5 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${
@@ -1110,17 +1111,7 @@ const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
         </div>
       </div>
 
-      {/* Tab Bar */}
-      <div className="px-4 mb-3">
-        <div className="flex bg-ios-surface-2 rounded-xl p-1">
-          {(['overview', 'details', 'debt', 'tax', 'audit'] as Tab[]).map(tab => (
-            <motion.button key={tab} whileTap={{ scale: 0.95 }} onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-2 rounded-lg text-[10px] font-semibold capitalize transition-all ${
-                activeTab === tab ? 'bg-ios-surface text-ios-text ios-shadow-sm' : 'text-ios-text-secondary'
-              }`}>{tab}</motion.button>
-          ))}
-        </div>
-      </div>
+
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto scroll-container px-4 pb-24">
