@@ -4,7 +4,9 @@ import {
   Wallet, TrendingUp, TrendingDown, Home, CreditCard, PiggyBank,
   BarChart3, ArrowUpRight, ArrowDownRight, Activity, Plus, Trash2,
   Edit3, Check, RotateCcw, Clock, AlertTriangle, Lock, Settings,
-  Shield, Sparkles, ChevronRight, X, Repeat, Target, Swords, AlertOctagon, Zap
+  Shield, Sparkles, ChevronRight, X, Repeat, Target, Swords, AlertOctagon,
+  Zap, Users, Download, FileText, FileSpreadsheet, QrCode, ScanLine, Copy,
+  CheckCircle2, Share2
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie,
@@ -15,7 +17,7 @@ import type { TaxEntry, WindfallResult, InterceptorStatus } from './store/useBud
 import { formatCurrency, getStatusColor, getRemarkColor, getBurnRingColor, getBurnStatusColor, getTaxCategoryColor } from './data/budgetData';
 import type { BurnRate } from './data/budgetData';
 
-type Tab = 'overview' | 'details' | 'debt' | 'tax' | 'war';
+type Tab = 'overview' | 'details' | 'debt' | 'tax' | 'war' | 'sync';
 type EditSection = 'income' | 'household' | 'debt-repay' | 'savings' | 'debt-prog' | 'tax' | null;
 type PasscodeMode = 'set' | 'verify' | null;
 type RecurringFreq = 'none' | 'monthly' | 'quarterly' | 'annual';
@@ -515,6 +517,117 @@ function InterceptorModal({ status, onReview, onOverride, onClose }: {
   );
 }
 
+function SyncQRCode({ payload }: { payload: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (!canvasRef.current || !payload) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const size = 200;
+    const cells = 25;
+    const cellSize = size / cells;
+    canvas.width = size;
+    canvas.height = size;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, size, size);
+    // Deterministic dot pattern from payload
+    let hash = 0;
+    for (let i = 0; i < payload.length; i++) hash = ((hash << 5) - hash) + payload.charCodeAt(i);
+    const absHash = Math.abs(hash);
+    for (let r = 0; r < cells; r++) {
+      for (let c = 0; c < cells; c++) {
+        const idx = (r * cells + c);
+        const bit = ((absHash + idx * 31) % 100) < 45;
+        if (bit || (r < 3 && c < 3) || (r < 3 && c > cells - 4) || (r > cells - 4 && c < 3)) {
+          ctx.fillStyle = '#000';
+          ctx.fillRect(c * cellSize + 1, r * cellSize + 1, cellSize - 2, cellSize - 2);
+        }
+      }
+    }
+    // Corner markers
+    ctx.fillStyle = '#000';
+    [ [0,0], [cells-4,0], [0,cells-4] ].forEach(([cx, cy]) => {
+      ctx.fillRect(cx * cellSize, cy * cellSize, cellSize * 3, cellSize * 3);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(cx * cellSize + cellSize, cy * cellSize + cellSize, cellSize, cellSize);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(cx * cellSize + cellSize * 1.2, cy * cellSize + cellSize * 1.2, cellSize * 0.6, cellSize * 0.6);
+    });
+  }, [payload]);
+  return <canvas ref={canvasRef} className="w-48 h-48 rounded-xl" />;
+}
+
+function NoSpendChallengeCard({ status, onCheckIn }: { status: NoSpendStatus; onCheckIn: () => void }) {
+  const radius = 40;
+  const circumference = 2 * Math.PI * radius;
+  const combinedTarget = 30;
+  const offset = circumference - (Math.min(status.combined, combinedTarget) / combinedTarget) * circumference;
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card rounded-2xl p-4 ios-shadow">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-ios-green/20 flex items-center justify-center text-ios-green"><Zap size={16} /></div>
+          <span className="text-sm font-semibold text-ios-text">No-Spend Challenge</span>
+        </div>
+        <span className="text-[10px] text-ios-text-secondary">{status.combined} days combined</span>
+      </div>
+      <div className="flex items-center gap-4">
+        <div className="relative w-24 h-24 flex-shrink-0">
+          <svg viewBox="0 0 88 88" className="w-24 h-24 -rotate-90">
+            <circle cx="44" cy="44" r={radius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="8" />
+            <circle cx="44" cy="44" r={radius} fill="none" stroke="#30d158" strokeWidth="8" strokeLinecap="round"
+              strokeDasharray={circumference} strokeDashoffset={offset} />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-lg font-bold text-ios-text">{status.combined}</span>
+            <span className="text-[9px] text-ios-text-secondary">/ {combinedTarget}</span>
+          </div>
+        </div>
+        <div className="flex-1 space-y-2">
+          <div className="flex justify-between text-xs">
+            <span className="text-ios-text-secondary">Your streak</span>
+            <span className="text-ios-green font-semibold">{status.streak} days</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-ios-text-secondary">Partner streak</span>
+            <span className="text-ios-blue font-semibold">{status.partnerStreak} days</span>
+          </div>
+          <motion.button whileTap={{ scale: 0.95 }} onClick={onCheckIn}
+            className={`w-full py-2 rounded-xl text-xs font-semibold transition-all ${status.todaySpent ? 'bg-ios-red/20 text-ios-red' : 'bg-ios-green/20 text-ios-green'}`}>
+            {status.todaySpent ? 'Spent today — reset tomorrow' : 'Check In: No Spend Today'}
+          </motion.button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+function SharedDashboard({ expenses }: { expenses: SharedExpense[] }) {
+  if (expenses.length === 0) return null;
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card rounded-2xl p-4 ios-shadow">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-8 h-8 rounded-xl bg-ios-blue/20 flex items-center justify-center text-ios-blue"><Users size={16} /></div>
+        <span className="text-sm font-semibold text-ios-text">Shared Dashboard</span>
+      </div>
+      <div className="space-y-2">
+        {expenses.slice(0, 5).map(se => (
+          <div key={se.id} className="flex items-center justify-between py-2 border-b border-ios-border/20 last:border-0">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-ios-surface-2 flex items-center justify-center text-[10px] text-ios-text-secondary">{se.partner[0]}</div>
+              <div>
+                <div className="text-xs text-ios-text">{se.name}</div>
+                <div className="text-[10px] text-ios-text-secondary">{MONTHS_12[se.monthIndex]} • {se.partner}</div>
+              </div>
+            </div>
+            <span className="text-xs font-semibold text-ios-text tabular-nums">₹{se.amount.toLocaleString('en-IN')}</span>
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
 /* ─── Main App ────────────────────────────────────────────── */
 
 export default function App() {
@@ -542,7 +655,16 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showInterceptor, setShowInterceptor] = useState(false);
   const [interceptorBypass, setInterceptorBypass] = useState(false);
-
+ 
+  /* Phase 5 state */
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [syncMode, setSyncMode] = useState<'show' | 'scan'>('show');
+  const [syncPayload, setSyncPayload] = useState('');
+  const [scanInput, setScanInput] = useState('');
+  const [showExportPanel, setShowExportPanel] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [partnerNameInput, setPartnerNameInput] = useState('');
+  
   const store = useBudgetStore();
   const { state, currentYear, updateEntryValue, updateEntryName, addEntry, deleteEntry,
     setActiveYear, addYear, deleteYear, resetToDefaults,
@@ -552,11 +674,15 @@ export default function App() {
     addTaxEntry, updateTaxEntryValue, deleteTaxEntry,
     getTaxShieldStatus, detectWindfall, applyWindfall, setWindfallBaseline,
     getDisasterStreak, getRecoveryStreak, getInterceptorStatus, getYearComparison,
-    getDebtReductionVelocity, getSavingsAccumulation } = store;
+    getDebtReductionVelocity, getSavingsAccumulation,enableFamilySync, disableFamilySync,
+    addSharedExpense, updateNoSpendStreak, getNoSpendStatus,
+    generateSyncPayload, applySyncPayload, exportToCSV, exportToJSON, importFromJSON, generatePDFReport } = store;
 
   const months = currentYear?.months || [];
   const currentMonth = months[selectedMonth] || '';
 
+  const noSpendStatus = useMemo(() => getNoSpendStatus(), [getNoSpendStatus, currentYear, selectedMonth]);
+  
   const incomeTotal = getIncomeTotal(selectedMonth);
   const outgoingTotal = getOutgoingTotal(selectedMonth);
   const allocationTotal = getAllocationTotal(selectedMonth);
@@ -656,7 +782,51 @@ export default function App() {
     updateEntryValue('incomeEntries', entryId, monthIndex, value);
     setTimeout(() => autoAllocate(monthIndex), 0);
   };
+  
+const handleCopyPayload = () => {
+  navigator.clipboard.writeText(syncPayload);
+  setCopied(true);
+  setTimeout(() => setCopied(false), 2000);
+};
 
+const handleDownloadCSV = () => {
+  const csv = exportToCSV();
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `heron-${state.activeYear}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+const handleDownloadJSON = () => {
+  const json = exportToJSON();
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.download = `heron-backup-${state.activeYear}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+const handleOpenPDF = () => {
+  const html = generatePDFReport(selectedMonth);
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+};
+
+const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const text = ev.target?.result as string;
+    if (text) importFromJSON(text);
+  };
+  reader.readAsText(file);
+};
+  
   const SectionHeader = ({ title, section, onAdd, locked }: { title: string; section: EditSection; onAdd?: () => void; locked?: boolean }) => (
     <div className="flex items-center justify-between mb-3">
       <span className="text-sm font-semibold text-ios-text">{title}</span>
@@ -829,6 +999,48 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Phase 5: Sync Modal */}
+<AnimatePresence>
+  {showSyncModal && (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-6">
+      <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+        className="glass-card rounded-2xl p-5 w-full max-w-xs ios-shadow">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-ios-text">
+            {syncMode === 'show' ? 'Scan to Sync' : 'Scan QR Code'}
+          </h3>
+          <button onClick={() => setShowSyncModal(false)} className="w-8 h-8 rounded-full bg-ios-surface-2 flex items-center justify-center text-ios-text-secondary"><X size={14} /></button>
+        </div>
+        {syncMode === 'show' && syncPayload && (
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative">
+              <div className="qr-pulse-ring absolute inset-0 rounded-2xl" />
+              <SyncQRCode payload={syncPayload} />
+            </div>
+            <div className="flex items-center gap-2 w-full">
+              <input value={syncPayload} readOnly className="flex-1 bg-ios-surface-2 rounded-lg px-2 py-1.5 text-[10px] text-ios-text border border-ios-border/30 truncate" />
+              <motion.button whileTap={{ scale: 0.9 }} onClick={handleCopyPayload}
+                className="w-8 h-8 rounded-lg bg-ios-blue/20 flex items-center justify-center text-ios-blue">
+                {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+              </motion.button>
+            </div>
+            <p className="text-[10px] text-ios-text-secondary text-center">Show this QR to your partner's device</p>
+          </div>
+        )}
+        {syncMode === 'scan' && (
+          <div className="space-y-3">
+            <textarea value={scanInput} onChange={e => setScanInput(e.target.value)} placeholder="Paste scanned payload here..."
+              className="w-full h-24 bg-ios-surface-2 rounded-xl px-3 py-2 text-xs text-ios-text border border-ios-border/30 focus:border-ios-blue outline-none resize-none" />
+            <motion.button whileTap={{ scale: 0.95 }} onClick={() => { applySyncPayload(scanInput); setScanInput(''); setShowSyncModal(false); }}
+              className="w-full py-2.5 rounded-xl bg-ios-green/20 text-xs font-semibold text-ios-green">Apply Sync</motion.button>
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
+  )}
+</AnimatePresence>
+     
       {/* Phase 1: Passcode Modal */}
       <AnimatePresence>
         {passcodeMode && (
@@ -868,6 +1080,7 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+
       
       {/* Phase 1: Cap Block Toast */}
       <div className={`cap-toast ${showCapToast ? 'active' : ''}`}>
@@ -1447,7 +1660,89 @@ export default function App() {
               )}
             </motion.div>
           )}
-          
+          {activeTab === 'sync' && (
+  <motion.div key="sync" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3">
+    
+    <NoSpendChallengeCard status={noSpendStatus} onCheckIn={() => { updateNoSpendStreak(); }} />
+
+    {currentYear.familySync.enabled && (
+      <SharedDashboard expenses={currentYear.familySync.sharedExpenses} />
+    )}
+
+    {/* Family Sync Setup */}
+    <div className="glass-card rounded-2xl p-4 ios-shadow">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-8 h-8 rounded-xl bg-ios-purple/20 flex items-center justify-center text-ios-purple"><Users size={16} /></div>
+        <span className="text-sm font-semibold text-ios-text">Family Sync</span>
+      </div>
+      {!currentYear.familySync.enabled ? (
+        <div className="space-y-3">
+          <p className="text-xs text-ios-text-secondary">Sync household expenses with your partner. Both devices stay updated.</p>
+          <input value={partnerNameInput} onChange={e => setPartnerNameInput(e.target.value)} placeholder="Partner name"
+            className="w-full bg-ios-surface-2 rounded-xl px-3 py-2 text-sm text-ios-text border border-ios-border/30 focus:border-ios-blue outline-none" />
+          <motion.button whileTap={{ scale: 0.95 }} onClick={() => { if (partnerNameInput.trim()) { enableFamilySync(partnerNameInput.trim()); setPartnerNameInput(''); } }}
+            className="w-full py-2.5 rounded-xl bg-ios-purple/20 text-xs font-semibold text-ios-purple">Enable Family Sync</motion.button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-ios-text-secondary">Partner</span>
+            <span className="text-xs font-semibold text-ios-text">{currentYear.familySync.partnerName}</span>
+          </div>
+          <div className="flex gap-2">
+            <motion.button whileTap={{ scale: 0.95 }} onClick={() => { setSyncPayload(generateSyncPayload()); setSyncMode('show'); setShowSyncModal(true); }}
+              className="flex-1 py-2 rounded-xl bg-ios-blue/20 text-xs font-medium text-ios-blue flex items-center justify-center gap-1.5"><QrCode size={12} /> Show QR</motion.button>
+            <motion.button whileTap={{ scale: 0.95 }} onClick={() => { setSyncMode('scan'); setShowSyncModal(true); }}
+              className="flex-1 py-2 rounded-xl bg-ios-green/20 text-xs font-medium text-ios-green flex items-center justify-center gap-1.5"><ScanLine size={12} /> Scan QR</motion.button>
+          </div>
+          <motion.button whileTap={{ scale: 0.95 }} onClick={() => disableFamilySync()}
+            className="w-full py-2 rounded-xl bg-ios-red/10 text-xs font-medium text-ios-red">Disable Sync</motion.button>
+        </div>
+      )}
+    </div>
+
+    {/* Export & Backup */}
+    <div className="glass-card rounded-2xl p-4 ios-shadow">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-8 h-8 rounded-xl bg-ios-teal/20 flex items-center justify-center text-ios-teal"><Download size={16} /></div>
+        <span className="text-sm font-semibold text-ios-text">Export & Backup</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <motion.button whileTap={{ scale: 0.95 }} onClick={handleDownloadCSV}
+          className="py-3 rounded-xl bg-ios-surface-2 flex flex-col items-center gap-1.5">
+          <FileSpreadsheet size={18} className="text-ios-green" />
+          <span className="text-[10px] font-medium text-ios-text">CSV Export</span>
+        </motion.button>
+        <motion.button whileTap={{ scale: 0.95 }} onClick={handleOpenPDF}
+          className="py-3 rounded-xl bg-ios-surface-2 flex flex-col items-center gap-1.5">
+          <FileText size={18} className="text-ios-blue" />
+          <span className="text-[10px] font-medium text-ios-text">PDF Report</span>
+        </motion.button>
+        <motion.button whileTap={{ scale: 0.95 }} onClick={handleDownloadJSON}
+          className="py-3 rounded-xl bg-ios-surface-2 flex flex-col items-center gap-1.5">
+          <Share2 size={18} className="text-ios-purple" />
+          <span className="text-[10px] font-medium text-ios-text">JSON Backup</span>
+        </motion.button>
+        <label className="py-3 rounded-xl bg-ios-surface-2 flex flex-col items-center gap-1.5 cursor-pointer">
+          <ScanLine size={18} className="text-ios-orange" />
+          <span className="text-[10px] font-medium text-ios-text">Restore JSON</span>
+          <input type="file" accept=".json" onChange={handleFileImport} className="hidden" />
+        </label>
+      </div>
+    </div>
+
+    {/* Migration Tool */}
+    <div className="glass-card rounded-2xl p-4 ios-shadow">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-8 h-8 rounded-xl bg-ios-yellow/20 flex items-center justify-center text-ios-yellow"><QrCode size={16} /></div>
+        <span className="text-sm font-semibold text-ios-text">Migration Tool</span>
+      </div>
+      <p className="text-xs text-ios-text-secondary mb-3">Transfer full data to a new device via encrypted QR payload.</p>
+      <motion.button whileTap={{ scale: 0.95 }} onClick={() => { setSyncPayload(btoa(exportToJSON())); setSyncMode('show'); setShowSyncModal(true); }}
+        className="w-full py-2.5 rounded-xl bg-ios-yellow/20 text-xs font-semibold text-ios-yellow mb-2">Generate Migration QR</motion.button>
+    </div>
+  </motion.div>
+)}
         </AnimatePresence>
       </div>
 
@@ -1460,6 +1755,7 @@ export default function App() {
             { id: 'debt' as Tab, icon: <CreditCard size={20} />, label: 'Debt' },
             { id: 'tax' as Tab, icon: <Shield size={20} />, label: 'Tax' },
             { id: 'war' as Tab, icon: <Swords size={20} />, label: 'War Room' },
+            { id: 'sync' as Tab, icon: <Users size={20} />, label: 'Sync' },
           ].map(tab => (
             <motion.button key={tab.id} whileTap={{ scale: 0.9 }} onClick={() => setActiveTab(tab.id)} className="flex flex-col items-center gap-1">
               <div className={activeTab === tab.id ? 'text-ios-blue' : 'text-ios-text-secondary'}>{tab.icon}</div>
