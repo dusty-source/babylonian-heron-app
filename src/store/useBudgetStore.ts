@@ -57,6 +57,7 @@ export interface YearData {
   auditLog: AuditEntry[];
   createdAt: string;
   modifiedAt: string;
+  familySync: FamilySync;
 }
 
 export interface BudgetState {
@@ -117,7 +118,42 @@ export interface InterceptorStatus {
   suggestions: { name: string; annualTotal: number; monthlyAvg: number }[];
 }
 
-const STORAGE_KEY = 'babylonian-heron-data-v4';
+// ─── Phase 5: Family Sync ────────────────────────────────────
+
+export interface SharedExpense {
+  id: string;
+  name: string;
+  amount: number;
+  monthIndex: number;
+  partner: string;
+  timestamp: string;
+}
+
+export interface FamilySync {
+  enabled: boolean;
+  partnerName: string;
+  sharedExpenses: SharedExpense[];
+  noSpendStreak: number;
+  lastNoSpendDate: string | null;
+  partnerStreak: number;
+}
+
+export interface NoSpendStatus {
+  streak: number;
+  partnerStreak: number;
+  combined: number;
+  todaySpent: boolean;
+}
+
+export interface SyncPayload {
+  householdExpenses: { name: string; values: number[] }[];
+  noSpendStreak: number;
+  partnerName: string;
+  timestamp: string;
+  checksum: string;
+}
+
+const STORAGE_KEY = 'babylonian-heron-data-v5';
 const MONTHS_12 = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
 const now = () => new Date().toISOString();
 
@@ -196,6 +232,7 @@ function createEmptyYear(year: string): YearData {
       { id: 'lic', name: 'LIC / Term Insurance', category: 'insurance', values: new Array(12).fill(0), limit: 150000, createdAt: ts, modifiedAt: ts },
       { id: 'tax-fd', name: 'Tax Saver FD', category: 'fd', values: new Array(12).fill(0), limit: 150000, createdAt: ts, modifiedAt: ts },
     ],
+    familySync: { enabled: false, partnerName: '', sharedExpenses: [], noSpendStreak: 0, lastNoSpendDate: null, partnerStreak: 0 },
     windfallBaseline: 0,
     auditLog: [],
     createdAt: ts,
@@ -289,14 +326,28 @@ function migrateV3ToV4(state: any): BudgetState {
   return state as BudgetState;
 }
 
+function migrateV4ToV5(state: any): BudgetState {
+  if (!state || !state.years) return migrateLegacyData();
+  for (const year of Object.keys(state.years)) {
+    const y = state.years[year];
+    if (!y) continue;
+    if (!y.familySync) {
+      y.familySync = { enabled: false, partnerName: '', sharedExpenses: [], noSpendStreak: 0, lastNoSpendDate: null, partnerStreak: 0 };
+    }
+  }
+  return state as BudgetState;
+}
+
 function loadState(): BudgetState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) { const parsed = JSON.parse(raw); return migrateV3ToV4(parsed); }
+    if (raw) { const parsed = JSON.parse(raw); return migrateV4ToV5(parsed); }
+    const rawV4 = localStorage.getItem('babylonian-heron-data-v4');
+    if (rawV4) { const parsed = JSON.parse(rawV4); const migrated = migrateV4ToV5(parsed); localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated)); return migrated; }
     const rawV3 = localStorage.getItem('babylonian-heron-data-v3');
-    if (rawV3) { const parsedV3 = JSON.parse(rawV3); const migrated = migrateV3ToV4(parsedV3); localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated)); return migrated; }
+    if (rawV3) { const parsedV3 = JSON.parse(rawV3); const migrated = migrateV4ToV5(migrateV3ToV4(parsedV3)); localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated)); return migrated; }
     const rawV2 = localStorage.getItem('babylonian-heron-data-v2');
-    if (rawV2) { const parsedV2 = JSON.parse(rawV2); const migrated = migrateV3ToV4(migrateV2ToV3(parsedV2)); localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated)); return migrated; }
+    if (rawV2) { const parsedV2 = JSON.parse(rawV2); const migrated = migrateV4ToV5(migrateV3ToV4(migrateV2ToV3(parsedV2))); localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated)); return migrated; }
   } catch { /* ignore */ }
   return migrateLegacyData();
 }
@@ -795,7 +846,185 @@ export function useBudgetStore() {
     if (!y) return 0;
     return y.savingsData.reduce((s, e) => s + e.values.reduce((a, b) => a + b, 0), 0);
   }, [state.years]);
+// Phase 5: Family Sync
+const enableFamilySync = useCallback((partnerName: string) => {
+  setState(prev => {
+    const y = prev.years[prev.activeYear];
+    if (!y) return prev;
+    const updated = { ...y, familySync: { ...y.familySync, enabled: true, partnerName }, modifiedAt: now() };
+    return { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
+  });
+}, []);
 
+const disableFamilySync = useCallback(() => {
+  setState(prev => {
+    const y = prev.years[prev.activeYear];
+    if (!y) return prev;
+    const updated = { ...y, familySync: { ...y.familySync, enabled: false, partnerName: '', sharedExpenses: [] }, modifiedAt: now() };
+    return { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
+  });
+}, []);
+
+const addSharedExpense = useCallback((name: string, amount: number, monthIndex: number, partner: string) => {
+  setState(prev => {
+    const y = prev.years[prev.activeYear];
+    if (!y) return prev;
+    const shared = [...y.familySync.sharedExpenses];
+    shared.unshift({ id: `shared-${Date.now()}`, name, amount, monthIndex, partner, timestamp: now() });
+    const updated = { ...y, familySync: { ...y.familySync, sharedExpenses: shared.slice(0, 50) }, modifiedAt: now() };
+    return { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
+  });
+}, []);
+
+const updateNoSpendStreak = useCallback(() => {
+  setState(prev => {
+    const y = prev.years[prev.activeYear];
+    if (!y) return prev;
+    const today = new Date().toISOString().split('T')[0];
+    const fs = y.familySync;
+    let streak = fs.noSpendStreak;
+    if (fs.lastNoSpendDate !== today) {
+      streak = (fs.lastNoSpendDate === new Date(Date.now() - 86400000).toISOString().split('T')[0]) ? streak + 1 : 1;
+    }
+    const updated = { ...y, familySync: { ...fs, noSpendStreak: streak, lastNoSpendDate: today }, modifiedAt: now() };
+    return { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
+  });
+}, []);
+
+const getNoSpendStatus = useCallback((): NoSpendStatus => {
+  const y = currentYear;
+  if (!y) return { streak: 0, partnerStreak: 0, combined: 0, todaySpent: false };
+  const fs = y.familySync;
+  const today = new Date().toISOString().split('T')[0];
+  const todaySpent = y.householdExpenses.some(e => {
+    const todayIdx = new Date().getMonth();
+    return e.values[todayIdx] > 0;
+  });
+  return { streak: fs.noSpendStreak, partnerStreak: fs.partnerStreak, combined: fs.noSpendStreak + fs.partnerStreak, todaySpent };
+}, [currentYear]);
+
+const generateSyncPayload = useCallback((): string => {
+  const y = currentYear;
+  if (!y) return '';
+  const payload: SyncPayload = {
+    householdExpenses: y.householdExpenses.map(e => ({ name: e.name, values: e.values })),
+    noSpendStreak: y.familySync.noSpendStreak,
+    partnerName: y.familySync.partnerName || 'Partner',
+    timestamp: now(),
+    checksum: '',
+  };
+  payload.checksum = btoa(JSON.stringify(payload.householdExpenses)).slice(0, 8);
+  return btoa(JSON.stringify(payload));
+}, [currentYear]);
+
+const applySyncPayload = useCallback((encoded: string) => {
+  try {
+    const payload: SyncPayload = JSON.parse(atob(encoded));
+    setState(prev => {
+      const y = prev.years[prev.activeYear];
+      if (!y) return prev;
+      const shared: SharedExpense[] = [];
+      payload.householdExpenses.forEach(pe => {
+        const existing = y.householdExpenses.find(e => e.name === pe.name);
+        if (existing) {
+          pe.values.forEach((v, mi) => {
+            if (v > 0 && existing.values[mi] !== v) {
+              shared.push({ id: `sync-${Date.now()}-${mi}`, name: pe.name, amount: v, monthIndex: mi, partner: payload.partnerName, timestamp: payload.timestamp });
+            }
+          });
+        }
+      });
+      const fs = y.familySync;
+      const updated = { ...y, familySync: { ...fs, partnerStreak: payload.noSpendStreak, sharedExpenses: [...fs.sharedExpenses, ...shared].slice(0, 50) }, modifiedAt: now() };
+      return { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
+    });
+  } catch { /* ignore invalid payload */ }
+}, []);
+
+// Phase 5: Export & Backup
+const exportToCSV = useCallback((monthIndex?: number): string => {
+  const y = currentYear;
+  if (!y) return '';
+  let csv = 'Category,Entry,Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec,Total\n';
+  const sections = [
+    { name: 'Income', key: 'incomeEntries' as const },
+    { name: 'Household', key: 'householdExpenses' as const },
+    { name: 'Debt Repayment', key: 'debtRepayment' as const },
+    { name: 'Savings', key: 'savingsData' as const },
+    { name: 'Tax Shield', key: 'taxShieldEntries' as const },
+  ];
+  sections.forEach(sec => {
+    const entries = y[sec.key] as DataEntry[];
+    entries.forEach(e => {
+      const total = e.values.reduce((a, b) => a + b, 0);
+      csv += `${sec.name},${e.name},${e.values.join(',')},${total}\n`;
+    });
+  });
+  return csv;
+}, [currentYear]);
+
+const exportToJSON = useCallback((): string => {
+  return JSON.stringify(state, null, 2);
+}, [state]);
+
+const importFromJSON = useCallback((json: string) => {
+  try {
+    const parsed = JSON.parse(json);
+    const migrated = migrateV4ToV5(parsed);
+    setState(migrated);
+  } catch { /* ignore */ }
+}, []);
+
+const generatePDFReport = useCallback((monthIndex: number): string => {
+  const y = currentYear;
+  if (!y) return '';
+  const income = y.incomeEntries.reduce((s, e) => s + (e.values[monthIndex] || 0), 0);
+  const household = y.householdExpenses.reduce((s, e) => s + (e.values[monthIndex] || 0), 0);
+  const debt = y.debtRepayment.reduce((s, e) => s + (e.values[monthIndex] || 0), 0);
+  const savings = y.savingsData.reduce((s, e) => s + (e.values[monthIndex] || 0), 0);
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Babylonian Heron - ${y.months[monthIndex]} ${y.year}</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 40px auto; color: #333; }
+    h1 { font-size: 24px; border-bottom: 2px solid #0a84ff; padding-bottom: 10px; }
+    .summary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 20px 0; }
+    .card { background: #f5f5f7; padding: 16px; border-radius: 12px; }
+    .card-label { font-size: 12px; color: #666; text-transform: uppercase; }
+    .card-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+    .green { color: #30d158; } .red { color: #ff453a; } .blue { color: #0a84ff; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th { text-align: left; padding: 10px; background: #1c1c1e; color: #fff; font-size: 12px; }
+    td { padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; }
+    .footer { margin-top: 40px; font-size: 11px; color: #999; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>Babylonian Heron — ${y.months[monthIndex]} ${y.year}</h1>
+  <div class="summary">
+    <div class="card"><div class="card-label">Total Income</div><div class="card-value green">₹${income.toLocaleString('en-IN')}</div></div>
+    <div class="card"><div class="card-label">Household</div><div class="card-value red">₹${household.toLocaleString('en-IN')}</div></div>
+    <div class="card"><div class="card-label">Debt Repayment</div><div class="card-value blue">₹${debt.toLocaleString('en-IN')}</div></div>
+    <div class="card"><div class="card-label">Savings</div><div class="card-value green">₹${savings.toLocaleString('en-IN')}</div></div>
+  </div>
+  <h2>Household Expenses</h2>
+  <table>
+    <thead><tr><th>Expense</th><th>Amount</th><th>% of Household</th></tr></thead>
+    <tbody>
+      ${y.householdExpenses.filter(e => e.values[monthIndex] > 0).map(e => {
+        const pct = household > 0 ? Math.round((e.values[monthIndex] / household) * 100) : 0;
+        return `<tr><td>${e.name}</td><td>₹${e.values[monthIndex].toLocaleString('en-IN')}</td><td>${pct}%</td></tr>`;
+      }).join('')}
+    </tbody>
+  </table>
+  <div class="footer">Generated by Babylonian Heron • ${new Date().toLocaleDateString('en-IN')}</div>
+</body>
+</html>`;
+  return html;
+}, [currentYear]);
+  
   const getIncomeTotal = useCallback((monthIndex: number) => getTotal('incomeEntries', monthIndex), [getTotal]);
   const getOutgoingTotal = useCallback((monthIndex: number) => getTotal('outgoingEntries', monthIndex), [getTotal]);
   const getAllocationTotal = useCallback((monthIndex: number) => getTotal('allocationEntries', monthIndex), [getTotal]);
@@ -846,5 +1075,16 @@ export function useBudgetStore() {
     getYearComparison,
     getDebtReductionVelocity,
     getSavingsAccumulation,
+    enableFamilySync,
+    disableFamilySync,
+    addSharedExpense,
+    updateNoSpendStreak,
+    getNoSpendStatus,
+    generateSyncPayload,
+    applySyncPayload,
+    exportToCSV,
+    exportToJSON,
+    importFromJSON,
+    generatePDFReport,
   };
 }
