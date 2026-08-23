@@ -1073,25 +1073,61 @@ export default function App() {
               </div>
 
               {/* Status Card */}
-              <div className="glass-card rounded-2xl p-4 ios-shadow card-hover">
-                <span className="text-sm font-bold text-ios-text block mb-3 tracking-tight">Status</span>
-                <div className="space-y-2">
-                  {currentYear.statusEntries.map(entry => (
-                    <div key={entry.id} className="flex items-center justify-between py-2 border-b border-ios-border/15 last:border-0">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full" style={{ background: getStatusColor(entry.values[selectedMonth]) }} />
-                        <span className="text-xs text-ios-text-secondary font-medium">{entry.name}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold tabular-nums" style={{ color: getStatusColor(entry.values[selectedMonth]) }}>
-                          {entry.values[selectedMonth] >= 0 ? '+' : ''}{formatCurrency(entry.values[selectedMonth])}
-                        </span>
-                        <StatusBadge text={currentYear.remarks[entry.id]?.[String(selectedMonth)] || ''} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+<div className="glass-card rounded-2xl p-4 ios-shadow card-hover">
+  <span className="text-sm font-bold text-ios-text block mb-3 tracking-tight">Status</span>
+  <div className="space-y-2">
+    {(() => {
+      // Compute status from actual allocations vs. real outflows
+      const y = currentYear;
+      if (!y) return null;
+      const alloc = y.allocationEntries;
+      const income = getIncomeTotal(selectedMonth);
+      const household = getHouseholdTotal(selectedMonth);
+      const debt = getDebtRepaymentTotal(selectedMonth);
+      const savings = getSavingsTotal(selectedMonth);
+
+      const statusItems = [
+        {
+          id: 'saving10',
+          name: '10% - SAVING',
+          allocation: alloc.find(e => e.id === 'saving10')?.values[selectedMonth] || 0,
+          actual: savings,
+        },
+        {
+          id: 'house70',
+          name: '70% - HOUSEHOLD',
+          allocation: alloc.find(e => e.id === 'house70')?.values[selectedMonth] || 0,
+          actual: household,
+        },
+        {
+          id: 'debt20',
+          name: '20% - DEBT',
+          allocation: alloc.find(e => e.id === 'debt20')?.values[selectedMonth] || 0,
+          actual: debt,
+        },
+      ];
+
+      return statusItems.map((item) => {
+        const diff = item.actual - item.allocation;
+        const remark = y.remarks[item.id]?.[String(selectedMonth)] || 'N/A';
+        return (
+          <div key={item.id} className="flex items-center justify-between py-2 border-b border-ios-border/15 last:border-0">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full" style={{ background: getStatusColor(diff) }} />
+              <span className="text-xs text-ios-text-secondary font-medium">{item.name}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold tabular-nums" style={{ color: getStatusColor(diff) }}>
+                {diff >= 0 ? '+' : ''}{formatCurrency(diff)}
+              </span>
+              <StatusBadge text={remark} />
+            </div>
+          </div>
+        );
+      });
+    })()}
+  </div>
+</div>
 
               {/* Trend Chart */}
               <div className="glass-card rounded-2xl p-4 ios-shadow card-hover">
