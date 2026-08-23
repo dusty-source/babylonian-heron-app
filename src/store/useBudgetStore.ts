@@ -1026,7 +1026,16 @@ const generatePDFReport = useCallback((monthIndex: number): string => {
 }, [currentYear]);
   
   const getIncomeTotal = useCallback((monthIndex: number) => getTotal('incomeEntries', monthIndex), [getTotal]);
-  const getOutgoingTotal = useCallback((monthIndex: number) => getTotal('outgoingEntries', monthIndex), [getTotal]);
+  
+  const getOutgoingTotal = useCallback((monthIndex: number) => {
+  const y = currentYear;
+  if (!y) return 0;
+  const household = y.householdExpenses.reduce((sum, e) => sum + (e.values[monthIndex] || 0), 0);
+  const debt = y.debtRepayment.reduce((sum, e) => sum + (e.values[monthIndex] || 0), 0);
+  const savings = y.savingsData.reduce((sum, e) => sum + (e.values[monthIndex] || 0), 0);
+  return household + debt + savings;
+}, [currentYear]);
+  
   const getAllocationTotal = useCallback((monthIndex: number) => getTotal('allocationEntries', monthIndex), [getTotal]);
   const getHouseholdTotal = useCallback((monthIndex: number) => getTotal('householdExpenses', monthIndex), [getTotal]);
   const getDebtRepaymentTotal = useCallback((monthIndex: number) => getTotal('debtRepayment', monthIndex), [getTotal]);
