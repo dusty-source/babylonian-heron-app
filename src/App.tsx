@@ -685,7 +685,7 @@ export default function App() {
   const { state, currentYear, updateEntryValue, updateEntryName, addEntry, deleteEntry,
     setActiveYear, addYear, deleteYear, resetToDefaults,
     autoAllocate, setPasscode, verifyPasscode, getBurnRate,
-    getIncomeTotal, getOutgoingTotal, getAllocationTotal, getHouseholdTotal, getDebtRepaymentTotal,
+    getIncomeTotal, getOutgoingTotal, getAllocationTotal, getHouseholdTotal, getDebtRepaymentTotal, getSavingsTotal,
     toggleRecurring, applyRecurringAutopilot, getCommittedRecurring, getTrueDisposable,
     addTaxEntry, updateTaxEntryValue, deleteTaxEntry,
     getTaxShieldStatus, detectWindfall, applyWindfall, setWindfallBaseline,
