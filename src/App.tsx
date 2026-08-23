@@ -882,7 +882,7 @@ export default function App() {
       <div className="shrink-0" style={{ height: 'env(safe-area-inset-top)' }} />
 
       {/* Header */}
-      <motion.header initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="shrink-0 px-5 pt-2 pb-2">
+        <motion.header initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="shrink-0 px-5 pt-1 pb-1">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-[22px] font-bold tracking-tight">
@@ -907,7 +907,7 @@ export default function App() {
       </motion.header>
 
       {/* Year Switcher */}
-      <div className="shrink-0 px-4 mb-2">
+      <div className="shrink-0 px-4 mb-1">
         <div className="flex items-center gap-2">
           <div className="flex-1 flex gap-1.5 overflow-x-auto scroll-x pb-1">
             {state.availableYears.map(year => (
@@ -962,7 +962,7 @@ export default function App() {
       )}
 
       {/* Summary Strip */}
-      <div className="shrink-0 flex gap-2 overflow-x-auto scroll-x pb-2 px-4 mb-2">
+      <div className="shrink-0 flex gap-2 overflow-x-auto scroll-x pb-2 px-4 mb-1">
         <SummaryStripCard title="Total In" value={grandIncoming} icon={<TrendingUp size={14} />} color="#30d158" subtitle={state.activeYear} delay={0.1} />
         <SummaryStripCard title="Total Out" value={grandOutgoing} icon={<TrendingDown size={14} />} color="#ff453a" subtitle={state.activeYear} delay={0.15} />
         <SummaryStripCard title="Debt Paid" value={grandDebtPaid} icon={<CreditCard size={14} />} color="#0a84ff" subtitle="EMI cleared" delay={0.2} />
@@ -971,7 +971,7 @@ export default function App() {
       </div>
 
       {/* Month Selector */}
-      <div className="shrink-0 px-4 mb-3">
+      <div className="shrink-0 px-4 mb-2">
         <div className="flex gap-1.5 overflow-x-auto scroll-x pb-1">
           {months.map((m, i) => (
             <motion.button key={m} whileTap={{ scale: 0.9 }} onClick={() => setSelectedMonth(i)}
@@ -985,7 +985,7 @@ export default function App() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto scroll-container px-4 pb-32">
+      <div className="flex-1 overflow-y-auto scroll-container px-4 pb-20">
         <AnimatePresence mode="wait">
           {activeTab === 'overview' && (
             <motion.div key="overview" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3 stagger-children">
@@ -1566,7 +1566,7 @@ export default function App() {
       </div>
 
       {/* Bottom Tab Bar */}
-      <div className="shrink-0 absolute bottom-0 left-0 right-0 z-40 px-4 pb-7 pt-4 bg-gradient-to-t from-black via-black/95 to-transparent">
+      <div className="shrink-0 absolute bottom-0 left-0 right-0 z-40 px-4 pb-3 pt-2 bg-gradient-to-t from-black via-black/95 to-transparent">
         <div className="glass-card rounded-2xl flex items-center justify-around py-2 px-1 ios-shadow relative">
           {tabs.map(tab => (
             <motion.button key={tab.id} whileTap={{ scale: 0.9 }} onClick={() => setActiveTab(tab.id)} className="relative flex-1 flex flex-col items-center gap-1 py-2 z-10">
