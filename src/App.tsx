@@ -739,12 +739,8 @@ export default function App() {
 
   const [coachFilter, setCoachFilter] = useState<'all' | 'alert' | 'warning' | 'suggestion' | 'reminder' | 'positive'>('all');
   useEffect(() => {
-  // Debounce generation to avoid excessive calls
-  const timer = setTimeout(() => {
     generateCoachInsights(selectedMonth);
-  }, 1500);
-  return () => clearTimeout(timer);
-}, [selectedMonth, state.activeYear, currentYear?.modifiedAt]); // whenever any data changes
+  }, [selectedMonth, state.activeYear]); // whenever any data changes
 
   const grandIncoming = useMemo(() => months.reduce((s, _, i) => s + getIncomeTotal(i), 0), [months, getIncomeTotal]);
   const grandOutgoing = useMemo(() => months.reduce((s, _, i) => s + getOutgoingTotal(i), 0), [months, getOutgoingTotal]);
@@ -1606,7 +1602,7 @@ export default function App() {
         <p className="text-xs text-ios-text-secondary leading-relaxed">No insights right now. Keep up the good work!</p>
       </div>
     ) : (
-      <AnimatePresence mode="popLayout">
+      <div className="space-y-3">
         {currentYear?.coachInsights
           .filter(ins => !ins.isDismissed && (coachFilter === 'all' || ins.type === coachFilter))
           .map(ins => {
@@ -1625,13 +1621,9 @@ export default function App() {
               positive: <Zap size={16} className="text-ios-green" />,
             };
             return (
-              <motion.div
+              <div
                 key={ins.id}
-                initial={false} // Prevent re-animation on re-render
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                transition={{ duration: 0.2 }}
-                className={`glass-card rounded-2xl p-4 ios-shadow border-l-4 ${colors[ins.type]}`}
+                className={`glass-card rounded-2xl p-4 ios-shadow border-l-4 ${colors[ins.type]} transition-opacity duration-300`}
               >
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-ios-surface-2">
@@ -1665,10 +1657,10 @@ export default function App() {
                     </div>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             );
           })}
-      </AnimatePresence>
+      </div>
     )}
   </motion.div>
 )}
@@ -1677,7 +1669,7 @@ export default function App() {
       </div>
 
 {/* Bottom Tab Bar */}
-<div className="shrink-0 absolute bottom-0 left-0 right-0 z-50 px-4 pb-3 pt-2 bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-auto">
+<div className="shrink-0 fixed bottom-0 left-0 right-0 z-[999] px-4 pb-3 pt-2 bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-auto isolate">
   <div className="glass-card rounded-2xl flex items-center justify-around py-2 px-1 ios-shadow relative">
     {tabs.map(tab => (
       <motion.button key={tab.id} whileTap={{ scale: 0.9 }} onClick={() => setActiveTab(tab.id)} className="relative flex-1 flex flex-col items-center gap-1 py-2 z-10">
