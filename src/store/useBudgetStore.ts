@@ -1054,10 +1054,10 @@ const generateCoachInsights = useCallback((monthIndex: number) => {
   const settings = y.coachSettings || defaultCoachSettings;
   const newInsights = generateInsights(y, monthIndex, settings);
   const existing = y.coachInsights || [];
-    // Merge with existing insights, keep only last 20, avoid duplicates by id
+  // Keep existing (preserve dismissed state), add only new ones
   const existingIds = new Set(existing.map(ins => ins.id));
   const uniqueNew = newInsights.filter(ins => !existingIds.has(ins.id));
-  if (uniqueNew.length === 0) return; // no changes, skip update
+  if (uniqueNew.length === 0) return; // no changes → skip state update
   const merged = [...uniqueNew, ...existing].slice(0, 20);
   setState(prev => {
     const y = prev.years[prev.activeYear];
