@@ -1668,12 +1668,12 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-{/* Bottom Tab Bar – Final Fix */}
+{/* Bottom Tab Bar – Fully Opaque */}
 <div
-  className="shrink-0 fixed bottom-0 left-0 right-0 z-[999] px-4 pt-2 bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-auto isolate"
+  className="shrink-0 fixed bottom-0 left-0 right-0 z-[999] px-4 pt-2 bg-black/95 border-t border-white/5 pointer-events-auto isolate"
   style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
 >
-  <div className="glass-card rounded-2xl flex items-center justify-around py-3 px-1 ios-shadow relative min-h-[56px]">
+  <div className="flex items-center justify-around py-3 px-1 relative min-h-[56px]">
     {tabs.map(tab => {
       const isActive = activeTab === tab.id;
       return (
@@ -1686,7 +1686,7 @@ export default function App() {
           {isActive && (
             <motion.div
               layoutId="activeTabBg"
-              className="absolute inset-1 bg-white/8 rounded-xl -z-10"
+              className="absolute inset-1 bg-white/10 rounded-xl -z-10"
               transition={{ type: 'spring', stiffness: 400, damping: 30 }}
             />
           )}
