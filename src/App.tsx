@@ -742,7 +742,7 @@ export default function App() {
   // Debounce generation to avoid excessive calls
   const timer = setTimeout(() => {
     generateCoachInsights(selectedMonth);
-  }, 500);
+  }, 1500);
   return () => clearTimeout(timer);
 }, [selectedMonth, state.activeYear, currentYear?.modifiedAt]); // whenever any data changes
 
@@ -1577,7 +1577,6 @@ export default function App() {
 
 {activeTab === 'coach' && (
   <motion.div key="coach" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3 stagger-children">
-    {/* Coach feed */}
     <div className="flex items-center justify-between mb-3">
       <h2 className="text-sm font-bold text-ios-text tracking-tight">Your Financial Coach</h2>
       <div className="flex gap-2">
@@ -1607,7 +1606,7 @@ export default function App() {
         <p className="text-xs text-ios-text-secondary leading-relaxed">No insights right now. Keep up the good work!</p>
       </div>
     ) : (
-      <div className="space-y-3">
+      <AnimatePresence mode="popLayout">
         {currentYear?.coachInsights
           .filter(ins => !ins.isDismissed && (coachFilter === 'all' || ins.type === coachFilter))
           .map(ins => {
@@ -1628,8 +1627,10 @@ export default function App() {
             return (
               <motion.div
                 key={ins.id}
-                initial={{ opacity: 0, y: 10 }}
+                initial={false} // Prevent re-animation on re-render
                 animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                transition={{ duration: 0.2 }}
                 className={`glass-card rounded-2xl p-4 ios-shadow border-l-4 ${colors[ins.type]}`}
               >
                 <div className="flex items-start gap-3">
@@ -1653,10 +1654,6 @@ export default function App() {
                           if (ins.action?.target) {
                             setActiveTab(ins.action.target);
                           }
-                          // Optionally handle payload
-                          if (ins.action?.payload) {
-                            // e.g., focus on a specific entry
-                          }
                         }}
                         className="mt-2 text-xs font-bold text-ios-blue"
                       >
@@ -1671,7 +1668,7 @@ export default function App() {
               </motion.div>
             );
           })}
-      </div>
+      </AnimatePresence>
     )}
   </motion.div>
 )}
@@ -1679,24 +1676,24 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-      {/* Bottom Tab Bar */}
-      <div className="shrink-0 absolute bottom-0 left-0 right-0 z-40 px-4 pb-3 pt-2 bg-gradient-to-t from-black via-black/95 to-transparent">
-        <div className="glass-card rounded-2xl flex items-center justify-around py-2 px-1 ios-shadow relative">
-          {tabs.map(tab => (
-            <motion.button key={tab.id} whileTap={{ scale: 0.9 }} onClick={() => setActiveTab(tab.id)} className="relative flex-1 flex flex-col items-center gap-1 py-2 z-10">
-              {activeTab === tab.id && (
-                <motion.div
-                  layoutId="activeTabBg"
-                  className="absolute inset-1 bg-white/8 rounded-xl -z-10"
-                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                />
-              )}
-              <div className={activeTab === tab.id ? 'text-ios-blue' : 'text-ios-text-secondary'}>{tab.icon}</div>
-              <span className={`text-[9px] font-bold ${activeTab === tab.id ? 'text-ios-text' : 'text-ios-text-secondary'}`}>{tab.label}</span>
-            </motion.button>
-          ))}
-        </div>
-      </div>
+{/* Bottom Tab Bar */}
+<div className="shrink-0 absolute bottom-0 left-0 right-0 z-50 px-4 pb-3 pt-2 bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-auto">
+  <div className="glass-card rounded-2xl flex items-center justify-around py-2 px-1 ios-shadow relative">
+    {tabs.map(tab => (
+      <motion.button key={tab.id} whileTap={{ scale: 0.9 }} onClick={() => setActiveTab(tab.id)} className="relative flex-1 flex flex-col items-center gap-1 py-2 z-10">
+        {activeTab === tab.id && (
+          <motion.div
+            layoutId="activeTabBg"
+            className="absolute inset-1 bg-white/8 rounded-xl -z-10"
+            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+          />
+        )}
+        <div className={activeTab === tab.id ? 'text-ios-blue' : 'text-ios-text-secondary'}>{tab.icon}</div>
+        <span className={`text-[9px] font-bold ${activeTab === tab.id ? 'text-ios-text' : 'text-ios-text-secondary'}`}>{tab.label}</span>
+      </motion.button>
+    ))}
+  </div>
+</div>
 
       {/* ─── Modals ───────────────────────────────────────────── */}
 
