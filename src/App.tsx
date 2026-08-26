@@ -890,7 +890,7 @@ export default function App() {
       <div className="shrink-0" style={{ height: 'env(safe-area-inset-top)' }} />
 
       {/* Header */}
-        <motion.header initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="shrink-0 px-5 pt-1 pb-1">
+        <motion.header initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="shrink-0 px-5 pb-1" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-[22px] font-bold tracking-tight">
@@ -1669,7 +1669,7 @@ export default function App() {
       </div>
 
 {/* Bottom Tab Bar */}
-<div className="shrink-0 fixed bottom-0 left-0 right-0 z-[999] px-4 pb-3 pt-2 bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-auto isolate">
+<div className="shrink-0 fixed bottom-0 left-0 right-0 z-[999] px-4 pt-2 bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-auto isolate" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
   <div className="glass-card rounded-2xl flex items-center justify-around py-2 px-1 ios-shadow relative">
     {tabs.map(tab => (
       <motion.button key={tab.id} whileTap={{ scale: 0.9 }} onClick={() => setActiveTab(tab.id)} className="relative flex-1 flex flex-col items-center gap-1 py-2 z-10">
