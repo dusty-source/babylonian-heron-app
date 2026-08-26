@@ -6,7 +6,7 @@ import {
   Edit3, Check, RotateCcw, Clock, AlertTriangle, Lock, Settings,
   Shield, Sparkles, ChevronRight, X, Repeat, Target, Swords, AlertOctagon,
   Zap, Users, Download, FileText, FileSpreadsheet, QrCode, ScanLine, Copy,
-  CheckCircle2, Share2
+  CheckCircle2, Share2, Lightbulb, Filter, SlidersHorizontal
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie,
@@ -16,8 +16,9 @@ import { useBudgetStore } from './store/useBudgetStore';
 import type { TaxEntry, WindfallResult, InterceptorStatus, NoSpendStatus, SharedExpense } from './store/useBudgetStore';
 import { formatCurrency, getStatusColor, getRemarkColor, getBurnRingColor, getBurnStatusColor, getTaxCategoryColor } from './data/budgetData';
 import type { BurnRate } from './data/budgetData';
+import { CoachInsight } from './coachEngine';
 
-type Tab = 'overview' | 'details' | 'debt' | 'tax' | 'war' | 'sync';
+type Tab = 'overview' | 'details' | 'debt' | 'tax' | 'war' | 'sync' | 'coach';
 type EditSection = 'income' | 'household' | 'debt-repay' | 'savings' | 'debt-prog' | 'tax' | null;
 type PasscodeMode = 'set' | 'verify' | null;
 type RecurringFreq = 'none' | 'monthly' | 'quarterly' | 'annual';
@@ -680,6 +681,7 @@ export default function App() {
   const [partnerNameInput, setPartnerNameInput] = useState('');
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [addSheetSection, setAddSheetSection] = useState<keyof YearData | null>(null);
+  
 
   const store = useBudgetStore();
   const { state, currentYear, updateEntryValue, updateEntryName, addEntry, deleteEntry,
@@ -692,7 +694,7 @@ export default function App() {
     getDisasterStreak, getRecoveryStreak, getInterceptorStatus, getYearComparison,
     getDebtReductionVelocity, getSavingsAccumulation, enableFamilySync, disableFamilySync,
     addSharedExpense, updateNoSpendStreak, getNoSpendStatus,
-    generateSyncPayload, applySyncPayload, exportToCSV, exportToJSON, importFromJSON, generatePDFReport } = store;
+    generateSyncPayload, applySyncPayload, exportToCSV, exportToJSON, importFromJSON, generatePDFReport, generateCoachInsights, dismissCoachInsight, updateCoachSettings } = store;
 
   const months = currentYear?.months || [];
   const currentMonth = months[selectedMonth] || '';
@@ -734,6 +736,15 @@ export default function App() {
       setWindfallData(null);
     }
   }, [selectedMonth, state.activeYear, detectWindfall]);
+
+  const [coachFilter, setCoachFilter] = useState<'all' | 'alert' | 'warning' | 'suggestion' | 'reminder' | 'positive'>('all');
+  useEffect(() => {
+  // Debounce generation to avoid excessive calls
+  const timer = setTimeout(() => {
+    generateCoachInsights(selectedMonth);
+  }, 500);
+  return () => clearTimeout(timer);
+}, [selectedMonth, state.activeYear, currentYear?.modifiedAt]); // whenever any data changes
 
   const grandIncoming = useMemo(() => months.reduce((s, _, i) => s + getIncomeTotal(i), 0), [months, getIncomeTotal]);
   const grandOutgoing = useMemo(() => months.reduce((s, _, i) => s + getOutgoingTotal(i), 0), [months, getOutgoingTotal]);
@@ -874,6 +885,7 @@ export default function App() {
     { id: 'tax' as Tab, icon: <Shield size={20} />, label: 'Tax' },
     { id: 'war' as Tab, icon: <Swords size={20} />, label: 'War Room' },
     { id: 'sync' as Tab, icon: <Users size={20} />, label: 'Sync' },
+    { id: 'coach' as Tab, icon: <Lightbulb size={20} />, label: 'Coach' },
   ];
 
   return (
@@ -1562,6 +1574,108 @@ export default function App() {
               </div>
             </motion.div>
           )}
+
+{activeTab === 'coach' && (
+  <motion.div key="coach" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3 stagger-children">
+    {/* Coach feed */}
+    <div className="flex items-center justify-between mb-3">
+      <h2 className="text-sm font-bold text-ios-text tracking-tight">Your Financial Coach</h2>
+      <div className="flex gap-2">
+        <select
+          value={coachFilter}
+          onChange={(e) => setCoachFilter(e.target.value as any)}
+          className="bg-ios-surface-2 rounded-xl px-3 py-1.5 text-xs text-ios-text border border-ios-border/30 focus:border-ios-blue outline-none"
+        >
+          <option value="all">All</option>
+          <option value="alert">Alerts</option>
+          <option value="warning">Warnings</option>
+          <option value="suggestion">Suggestions</option>
+          <option value="reminder">Reminders</option>
+          <option value="positive">Positive</option>
+        </select>
+        <button
+          onClick={() => generateCoachInsights(selectedMonth)}
+          className="w-8 h-8 rounded-xl bg-ios-surface-2 flex items-center justify-center text-ios-text-secondary"
+        >
+          <RotateCcw size={14} />
+        </button>
+      </div>
+    </div>
+    {currentYear?.coachInsights.filter(ins => !ins.isDismissed && (coachFilter === 'all' || ins.type === coachFilter)).length === 0 ? (
+      <div className="glass-card rounded-2xl p-8 ios-shadow text-center">
+        <Lightbulb size={32} className="text-ios-text-secondary mx-auto mb-3 opacity-50" />
+        <p className="text-xs text-ios-text-secondary leading-relaxed">No insights right now. Keep up the good work!</p>
+      </div>
+    ) : (
+      <div className="space-y-3">
+        {currentYear?.coachInsights
+          .filter(ins => !ins.isDismissed && (coachFilter === 'all' || ins.type === coachFilter))
+          .map(ins => {
+            const colors = {
+              alert: 'border-ios-red/30 bg-ios-red/10',
+              warning: 'border-ios-orange/30 bg-ios-orange/10',
+              suggestion: 'border-ios-blue/30 bg-ios-blue/10',
+              reminder: 'border-ios-purple/30 bg-ios-purple/10',
+              positive: 'border-ios-green/30 bg-ios-green/10',
+            };
+            const icons = {
+              alert: <AlertOctagon size={16} className="text-ios-red" />,
+              warning: <AlertTriangle size={16} className="text-ios-orange" />,
+              suggestion: <Lightbulb size={16} className="text-ios-blue" />,
+              reminder: <Clock size={16} className="text-ios-purple" />,
+              positive: <Zap size={16} className="text-ios-green" />,
+            };
+            return (
+              <motion.div
+                key={ins.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`glass-card rounded-2xl p-4 ios-shadow border-l-4 ${colors[ins.type]}`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-ios-surface-2">
+                    {icons[ins.type]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between">
+                      <h4 className="text-sm font-bold text-ios-text">{ins.title}</h4>
+                      <button
+                        onClick={() => dismissCoachInsight(ins.id)}
+                        className="w-6 h-6 rounded-full hover:bg-ios-surface-2 flex items-center justify-center text-ios-text-secondary"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                    <p className="text-xs text-ios-text-secondary mt-1 leading-relaxed">{ins.description}</p>
+                    {ins.action && (
+                      <button
+                        onClick={() => {
+                          if (ins.action?.target) {
+                            setActiveTab(ins.action.target);
+                          }
+                          // Optionally handle payload
+                          if (ins.action?.payload) {
+                            // e.g., focus on a specific entry
+                          }
+                        }}
+                        className="mt-2 text-xs font-bold text-ios-blue"
+                      >
+                        {ins.action.label} →
+                      </button>
+                    )}
+                    <div className="text-[10px] text-ios-text-secondary mt-2">
+                      {new Date(ins.generatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+      </div>
+    )}
+  </motion.div>
+)}
+          
         </AnimatePresence>
       </div>
 
@@ -1637,30 +1751,166 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Settings Modal */}
-      <AnimatePresence>
-        {showSettings && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-6">
-            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-              className="glass-card rounded-2xl p-5 w-full max-w-xs ios-shadow">
-              <h3 className="text-sm font-bold text-ios-text mb-3 tracking-tight">Settings</h3>
-              <button onClick={() => { setPasscodeMode('set'); setShowSettings(false); }}
-                className="w-full text-left px-3 py-2.5 rounded-xl bg-ios-surface-2 text-xs text-ios-text mb-2 flex items-center justify-between font-medium">
-                <span>{state.passcode ? 'Change Passcode' : 'Set Passcode'}</span>
-                <ChevronRight size={14} className="text-ios-text-secondary" />
-              </button>
-              {state.passcode && (
-                <div className="text-[10px] text-ios-text-secondary px-1 mb-2">
-                  Passcode is set. Used to override 70% household cap lock.
-                </div>
-              )}
-              <button onClick={() => setShowSettings(false)}
-                className="w-full py-2.5 rounded-xl bg-ios-blue/15 text-xs font-bold text-ios-blue mt-2">Done</button>
-            </motion.div>
-          </motion.div>
+{/* Settings Modal */}
+<AnimatePresence>
+  {showSettings && (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-6"
+      onClick={() => setShowSettings(false)}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        className="glass-card rounded-2xl p-5 w-full max-w-xs ios-shadow max-h-[80vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <h3 className="text-sm font-bold text-ios-text mb-3 tracking-tight">Settings</h3>
+
+        {/* Passcode */}
+        <button
+          onClick={() => { setPasscodeMode('set'); setShowSettings(false); }}
+          className="w-full text-left px-3 py-2.5 rounded-xl bg-ios-surface-2 text-xs text-ios-text mb-2 flex items-center justify-between font-medium"
+        >
+          <span>{state.passcode ? 'Change Passcode' : 'Set Passcode'}</span>
+          <ChevronRight size={14} className="text-ios-text-secondary" />
+        </button>
+        {state.passcode && (
+          <div className="text-[10px] text-ios-text-secondary px-1 mb-3">
+            Passcode is set. Used to override 70% household cap lock.
+          </div>
         )}
-      </AnimatePresence>
+
+        {/* ─── Coach Settings ─────────────────────────────── */}
+        <div className="pt-3 border-t border-ios-border/15">
+          <h4 className="text-xs font-bold text-ios-text-secondary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <Lightbulb size={12} /> Coach Settings
+          </h4>
+
+          {currentYear ? (
+            <>
+              {/* Rule toggles */}
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {[
+                  { id: 'capAlert', label: 'Cap Alert' },
+                  { id: 'spikeDetection', label: 'Spike' },
+                  { id: 'recurringReminder', label: 'Recurring' },
+                  { id: 'savingsCheck', label: 'Savings' },
+                  { id: 'debtAcceleration', label: 'Debt' },
+                  { id: 'windfall', label: 'Windfall' },
+                  { id: 'emergencyFund', label: 'Emergency' },
+                  { id: 'disasterStreak', label: 'Disaster' },
+                  { id: 'recoveryStreak', label: 'Recovery' },
+                  { id: 'predictiveAlert', label: 'Predict' },
+                ].map(rule => {
+                  const enabled = currentYear.coachSettings?.enabledRules?.includes(rule.id) ?? false;
+                  return (
+                    <button
+                      key={rule.id}
+                      onClick={() => {
+                        const current = currentYear.coachSettings?.enabledRules || [];
+                        const newRules = enabled ? current.filter(r => r !== rule.id) : [...current, rule.id];
+                        updateCoachSettings({ enabledRules: newRules });
+                      }}
+                      className={`px-2.5 py-1 rounded-full text-[9px] font-bold transition-all ${
+                        enabled ? 'bg-ios-blue text-white' : 'bg-ios-surface-2 text-ios-text-secondary'
+                      }`}
+                    >
+                      {rule.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Threshold inputs */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[9px] text-ios-text-secondary font-medium">Cap Warning %</label>
+                  <input
+                    type="number"
+                    value={Math.round((currentYear.coachSettings?.thresholds?.capWarning || 0.7) * 100)}
+                    onChange={(e) => {
+                      const val = Number(e.target.value) / 100;
+                      if (val >= 0 && val <= 1) {
+                        updateCoachSettings({
+                          thresholds: { ...currentYear.coachSettings?.thresholds, capWarning: val }
+                        });
+                      }
+                    }}
+                    className="w-full bg-ios-surface-2 rounded-xl px-2 py-1 text-xs text-ios-text border border-ios-border/30 focus:border-ios-blue outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] text-ios-text-secondary font-medium">Spike Factor</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={currentYear.coachSettings?.thresholds?.spikeFactor || 1.5}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (val >= 1) {
+                        updateCoachSettings({
+                          thresholds: { ...currentYear.coachSettings?.thresholds, spikeFactor: val }
+                        });
+                      }
+                    }}
+                    className="w-full bg-ios-surface-2 rounded-xl px-2 py-1 text-xs text-ios-text border border-ios-border/30 focus:border-ios-blue outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] text-ios-text-secondary font-medium">Predictive %</label>
+                  <input
+                    type="number"
+                    value={Math.round((currentYear.coachSettings?.thresholds?.predictiveWarning || 0.9) * 100)}
+                    onChange={(e) => {
+                      const val = Number(e.target.value) / 100;
+                      if (val >= 0 && val <= 1) {
+                        updateCoachSettings({
+                          thresholds: { ...currentYear.coachSettings?.thresholds, predictiveWarning: val }
+                        });
+                      }
+                    }}
+                    className="w-full bg-ios-surface-2 rounded-xl px-2 py-1 text-xs text-ios-text border border-ios-border/30 focus:border-ios-blue outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] text-ios-text-secondary font-medium">Emergency Months</label>
+                  <input
+                    type="number"
+                    value={currentYear.coachSettings?.thresholds?.emergencyMonths || 3}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (val >= 1) {
+                        updateCoachSettings({
+                          thresholds: { ...currentYear.coachSettings?.thresholds, emergencyMonths: val }
+                        });
+                      }
+                    }}
+                    className="w-full bg-ios-surface-2 rounded-xl px-2 py-1 text-xs text-ios-text border border-ios-border/30 focus:border-ios-blue outline-none"
+                  />
+                </div>
+              </div>
+              <div className="text-[9px] text-ios-text-secondary mt-1">Rules active: {currentYear.coachSettings?.enabledRules?.length || 0}</div>
+            </>
+          ) : (
+            <div className="text-xs text-ios-text-secondary">Loading...</div>
+          )}
+        </div>
+
+        {/* Close button */}
+        <button
+          onClick={() => setShowSettings(false)}
+          className="w-full py-2.5 rounded-xl bg-ios-blue/15 text-xs font-bold text-ios-blue mt-4"
+        >
+          Done
+        </button>
+      </motion.div>
+    </motion.div>
+  )}
+</AnimatePresence>
 
       {/* Sync Modal */}
       <AnimatePresence>
