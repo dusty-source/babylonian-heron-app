@@ -1145,5 +1145,8 @@ const generatePDFReport = useCallback((monthIndex: number): string => {
     exportToJSON,
     importFromJSON,
     generatePDFReport,
+  generateCoachInsights,
+  dismissCoachInsight,
+  updateCoachSettings,    
   };
 }
