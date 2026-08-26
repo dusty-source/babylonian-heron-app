@@ -890,7 +890,7 @@ export default function App() {
       <div className="shrink-0" style={{ height: 'env(safe-area-inset-top)' }} />
 
       {/* Header */}
-        <motion.header initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="shrink-0 px-5 pb-1" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <motion.header initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="shrink-0 px-5 pt-1 pb-0 relative z-10" style={{ paddingTop: 'env(safe-area-inset-top) + 4px' }}>
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-[22px] font-bold tracking-tight">
@@ -993,7 +993,7 @@ export default function App() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto scroll-container px-4 pb-20">
+      <div className="flex-1 overflow-y-auto scroll-container px-4 pb-0">
         <AnimatePresence mode="wait">
           {activeTab === 'overview' && (
             <motion.div key="overview" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }} className="space-y-3 stagger-children">
@@ -1668,25 +1668,39 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-{/* Bottom Tab Bar */}
-<div className="shrink-0 fixed bottom-0 left-0 right-0 z-[999] px-4 pt-2 bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-auto isolate" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-  <div className="glass-card rounded-2xl flex items-center justify-around py-2 px-1 ios-shadow relative">
-    {tabs.map(tab => (
-      <motion.button key={tab.id} whileTap={{ scale: 0.9 }} onClick={() => setActiveTab(tab.id)} className="relative flex-1 flex flex-col items-center gap-1 py-2 z-10">
-        {activeTab === tab.id && (
-          <motion.div
-            layoutId="activeTabBg"
-            className="absolute inset-1 bg-white/8 rounded-xl -z-10"
-            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-          />
-        )}
-        <div className={activeTab === tab.id ? 'text-ios-blue' : 'text-ios-text-secondary'}>{tab.icon}</div>
-        <span className={`text-[9px] font-bold ${activeTab === tab.id ? 'text-ios-text' : 'text-ios-text-secondary'}`}>{tab.label}</span>
-      </motion.button>
-    ))}
+{/* Bottom Tab Bar – Final Fix */}
+<div
+  className="shrink-0 fixed bottom-0 left-0 right-0 z-[999] px-4 pt-2 bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-auto isolate"
+  style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+>
+  <div className="glass-card rounded-2xl flex items-center justify-around py-3 px-1 ios-shadow relative min-h-[56px]">
+    {tabs.map(tab => {
+      const isActive = activeTab === tab.id;
+      return (
+        <motion.button
+          key={tab.id}
+          whileTap={{ scale: 0.9 }}
+          onClick={() => setActiveTab(tab.id)}
+          className="relative flex-1 flex flex-col items-center gap-0.5 py-2 z-10"
+        >
+          {isActive && (
+            <motion.div
+              layoutId="activeTabBg"
+              className="absolute inset-1 bg-white/8 rounded-xl -z-10"
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+            />
+          )}
+          <div className={isActive ? 'text-ios-blue' : 'text-ios-text-secondary'}>
+            {tab.icon}
+          </div>
+          <span className={`text-[9px] font-bold leading-none ${isActive ? 'text-ios-text' : 'text-ios-text-secondary'}`}>
+            {tab.label}
+          </span>
+        </motion.button>
+      );
+    })}
   </div>
 </div>
-
       {/* ─── Modals ───────────────────────────────────────────── */}
 
       {/* Add Entry Bottom Sheet */}
