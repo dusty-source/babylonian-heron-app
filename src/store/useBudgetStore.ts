@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
+import { generateInsights, CoachInsight, CoachSettings, defaultCoachSettings } from '../coachEngine';
+
 export interface DataEntry {
   id: string;
   name: string;
@@ -58,6 +60,8 @@ export interface YearData {
   createdAt: string;
   modifiedAt: string;
   familySync: FamilySync;
+  coachInsights: CoachInsight[];
+  coachSettings: CoachSettings;
 }
 
 export interface BudgetState {
@@ -237,6 +241,8 @@ function createEmptyYear(year: string): YearData {
     auditLog: [],
     createdAt: ts,
     modifiedAt: ts,
+    coachInsights: [],
+    coachSettings: defaultCoachSettings, 
   };
 }
 
@@ -1040,7 +1046,51 @@ const generatePDFReport = useCallback((monthIndex: number): string => {
   const getHouseholdTotal = useCallback((monthIndex: number) => getTotal('householdExpenses', monthIndex), [getTotal]);
   const getDebtRepaymentTotal = useCallback((monthIndex: number) => getTotal('debtRepayment', monthIndex), [getTotal]);
   const getSavingsTotal = useCallback((monthIndex: number) => getTotal('savingsData', monthIndex), [getTotal]);
+  
+  // ─── Coach Engine ──────────────────────────────────────────
+  const generateCoachInsights = useCallback((monthIndex: number) => {
+    const y = currentYear;
+    if (!y) return;
+    const settings = y.coachSettings || defaultCoachSettings;
+    const newInsights = generateInsights(y, monthIndex, settings);
+    // Merge with existing insights, keep only last 20, avoid duplicates by id
+    const existing = y.coachInsights || [];
+    const merged = [...newInsights, ...existing]
+      .filter((ins, idx, self) => idx === self.findIndex(i => i.id === ins.id))
+      .slice(0, 20);
+    setState(prev => {
+      const y = prev.years[prev.activeYear];
+      if (!y) return prev;
+      const updated = { ...y, coachInsights: merged, modifiedAt: now() };
+      return { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
+    });
+  }, [currentYear]);
 
+  const dismissCoachInsight = useCallback((insightId: string) => {
+    setState(prev => {
+      const y = prev.years[prev.activeYear];
+      if (!y) return prev;
+      const insights = y.coachInsights.map(ins => 
+        ins.id === insightId ? { ...ins, isDismissed: true } : ins
+      );
+      const updated = { ...y, coachInsights: insights, modifiedAt: now() };
+      return { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
+    });
+  }, []);
+
+  const updateCoachSettings = useCallback((newSettings: Partial<CoachSettings>) => {
+    setState(prev => {
+      const y = prev.years[prev.activeYear];
+      if (!y) return prev;
+      const updated = { 
+        ...y, 
+        coachSettings: { ...y.coachSettings, ...newSettings },
+        modifiedAt: now() 
+      };
+      return { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
+    });
+  }, []);
+  
   return {
     state,
     currentYear,
