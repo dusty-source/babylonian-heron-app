@@ -1048,23 +1048,24 @@ const generatePDFReport = useCallback((monthIndex: number): string => {
   const getSavingsTotal = useCallback((monthIndex: number) => getTotal('savingsData', monthIndex), [getTotal]);
   
   // ─── Coach Engine ──────────────────────────────────────────
-  const generateCoachInsights = useCallback((monthIndex: number) => {
-    const y = currentYear;
-    if (!y) return;
-    const settings = y.coachSettings || defaultCoachSettings;
-    const newInsights = generateInsights(y, monthIndex, settings);
+const generateCoachInsights = useCallback((monthIndex: number) => {
+  const y = currentYear;
+  if (!y) return;
+  const settings = y.coachSettings || defaultCoachSettings;
+  const newInsights = generateInsights(y, monthIndex, settings);
+  const existing = y.coachInsights || [];
     // Merge with existing insights, keep only last 20, avoid duplicates by id
-    const existing = y.coachInsights || [];
-    const merged = [...newInsights, ...existing]
-      .filter((ins, idx, self) => idx === self.findIndex(i => i.id === ins.id))
-      .slice(0, 20);
-    setState(prev => {
-      const y = prev.years[prev.activeYear];
-      if (!y) return prev;
-      const updated = { ...y, coachInsights: merged, modifiedAt: now() };
-      return { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
-    });
-  }, [currentYear]);
+  const existingIds = new Set(existing.map(ins => ins.id));
+  const uniqueNew = newInsights.filter(ins => !existingIds.has(ins.id));
+  if (uniqueNew.length === 0) return; // no changes, skip update
+  const merged = [...uniqueNew, ...existing].slice(0, 20);
+  setState(prev => {
+    const y = prev.years[prev.activeYear];
+    if (!y) return prev;
+    const updated = { ...y, coachInsights: merged, modifiedAt: now() };
+    return { ...prev, years: { ...prev.years, [prev.activeYear]: updated } };
+  });
+}, [currentYear]);
 
   const dismissCoachInsight = useCallback((insightId: string) => {
     setState(prev => {
